@@ -64,15 +64,18 @@ typedef struct
     t_eFMKCPU_IRQNType          c_IRQNType_e;                           /**< constant to store the IRQN for each ADC */
     t_eFMKCPU_DmaRqst           c_DmaAdc_e;
     t_bool                      IsConfigured_b;                      /**< Flag to know if the ADC is configured */
-    t_bool                      IsAdcRunning_b;                         /**< Flag to know if the Adc is running a conversion */
-    t_bool                      flagErrDetected_b;                      /**< Flag in DMA/Interrupt mode Error Callback has been call */                 
+    t_bool                      IsAdcRunning_b;                             /**< Flag to know if the Adc is running a conversion */
+    t_bool                      flagErrDetected_b;                         /**< Flag in DMA/Interrupt mode Error Callback has been call */                 
     t_uint16                    Error_u16;                                /**< Store the adc error status */
+    t_uint32                    mskChnlToCfg_u32;                         /**< mask with all channel to configure */
+    t_uint8                     nbChnlToCfg_u8;                             /**< Number of channel to configure */
 } t_sFMKCDA_AdcInfo;
 
 typedef struct
 {
     t_float32 cabliValue_f32;                               /**< Store the calibration tension for an adc */
     t_bool isValueSet_b;                                    /**< Store wether or not hte calibration has been set */
+    t_uint32 lastCalib_u32;                                 /**< Last time the calibration has been done  */
 } t_sFMKCDA_AdcCalibInfo;
 // ********************************************************************
 // *                      Prototypes
@@ -197,6 +200,17 @@ static t_eReturnCode s_FMKCDA_StartAdcConversion(t_eFMKCDA_Adc f_Adc_e, t_eFMKCD
  *
  */
 static t_eReturnCode s_FMKCDA_UpdateChannelValue(t_eFMKCDA_Adc f_Adc_e);
+/**
+ *
+ *	@brief      Perform cyclic pre-operation for this module.\n
+ *  @note       Make configuration for vref and vtemperature adc channel\n
+ *              
+ * @retval RC_OK                               @ref RC_OK
+ * @retval RC_WARNING_WRONG_STATE              @ref RC_ERROR_WARNING_STATE
+ * @retval RC_WARNING_BUSY                     @ref RC_WARNING_BUSY
+ *
+ */
+static t_eReturnCode s_FMKCDA_SetAdcCalibration(t_eFMKCDA_Adc f_Adc_e, t_float32 * f_calibValue_pf32);
 //****************************************************************************
 //                      Public functions - Implementation
 //********************************************************************************
@@ -217,6 +231,8 @@ t_eReturnCode FMKCDA_Init(void)
         adcInfo_ps->IsConfigured_b       = (t_bool)False;
         adcInfo_ps->IsAdcRunning_b       = (t_bool)False;
         adcInfo_ps->flagErrDetected_b    = (t_bool)False;
+        adcInfo_ps->mskChnlToCfg_u32     = (t_uint32)0;
+        adcInfo_ps->nbChnlToCfg_u8       = (t_uint8)0; // 
         adcInfo_ps->c_clock_e = c_FmkCda_AdcCfg_as[adcIndex_u8].c_clock_e;
         adcInfo_ps->c_IRQNType_e = c_FmkCda_AdcCfg_as[adcIndex_u8].c_IRQNType_e;
         adcInfo_ps->c_DmaAdc_e = c_FmkCda_AdcCfg_as[adcIndex_u8].c_DmaAdc_e;
@@ -226,6 +242,7 @@ t_eReturnCode FMKCDA_Init(void)
         
         g_adcCalibInfo_as[adcIndex_u8].cabliValue_f32 = (t_float32)0.0;
         g_adcCalibInfo_as[adcIndex_u8].isValueSet_b = (t_bool)False;
+        g_adcCalibInfo_as[adcIndex_u8].lastCalib_u32 = (t_uint32)0;
         
         g_AdcBuffer_as[adcIndex_u8].lastUpate_u32 = (t_uint32)0;
         g_AdcBuffer_as[adcIndex_u8].flagOpeRW_b = (t_bool)False;
@@ -332,8 +349,7 @@ t_eReturnCode FMKCDA_SetState(t_eCyclicModState f_State_e)
  * FMKCDA_Set_AdcChannelCfg
  *********************************/
 t_eReturnCode FMKCDA_Set_AdcChannelCfg( t_eFMKCDA_Adc f_Adc_e,
-                                        t_eFMKCDA_AdcChannel f_channel_e,
-                                        t_eFMKCDA_HwAdcCfg f_hwAdcCfg_e)
+                                        t_eFMKCDA_AdcChannel f_channel_e)
 {
     t_eReturnCode Ret_e = RC_OK;
 
@@ -343,23 +359,13 @@ t_eReturnCode FMKCDA_Set_AdcChannelCfg( t_eFMKCDA_Adc f_Adc_e,
         Ret_e = RC_ERROR_PARAM_INVALID;
         ASSERT((t_uint16)f_Adc_e);
     }
-    if(g_AdcInfo_as[f_Adc_e].IsConfigured_b == (t_bool)False)
-    {
-        Ret_e = s_FMKCDA_Set_BspAdcCfg((t_eFMKCDA_Adc)f_Adc_e,
-                                           f_hwAdcCfg_e);
-    }
-    if(g_AdcInfo_as[f_Adc_e].IsConfigured_b == (t_bool)True
-    && f_hwAdcCfg_e != g_AdcInfo_as[f_Adc_e].HwCfg_e)
-    {
-        Ret_e = RC_ERROR_WRONG_CONFIG;
-        ASSERT((t_uint16)g_AdcInfo_as[f_Adc_e].IsConfigured_b);
-    }
-    if (Ret_e == RC_OK)
+    else
     {
         //----- depending on hardware configuration make some configuration -----//
         #warning "Only Scan/DMA mode is treated for AdcChannel Configuration"
         //----- Configure Channel -----//
-        Ret_e = s_FMKCDA_Set_BspChannelCfg(f_Adc_e, f_channel_e);
+        g_AdcInfo_as[f_Adc_e].nbChnlToCfg_u8++;
+        SETBIT_32B(g_AdcInfo_as[f_Adc_e].mskChnlToCfg_u32, (t_uint32)f_channel_e);
     }
     
     return Ret_e;
@@ -470,7 +476,9 @@ ADC_HandleTypeDef * FMKCDA_PRIVATE_GetHandleTypeDef(t_eFMKCDA_Adc f_adc_e)
 static t_eReturnCode s_FMKCDA_PreOPerational(void)
 {
     t_eReturnCode Ret_e = RC_OK;
+    t_uint8 idxChannel_u8;
     t_uint8 AdcIndex_u8 = 0;
+    t_sFMKCDA_AdcInfo * adcInfo_ps;
 
     //----- set configuration channel for Adc Internal Signal 
     //      It appears that sometimes, different ADC are connected 
@@ -478,21 +486,43 @@ static t_eReturnCode s_FMKCDA_PreOPerational(void)
     //      When we loop on each Adc to Configure the Channel Link to the Vref 
     //      The function FMKCDA_Set_AdcChannelCfg will return RC_ERROR_ALREADY_CONFIGURED
     //      We consider this state OK -----//
-
     for(AdcIndex_u8 = (t_uint8)0 ; 
            (AdcIndex_u8 < FMKCDA_ADC_NB) 
         && (Ret_e == RC_OK) ; 
         AdcIndex_u8++)
     {
-        if(g_AdcInfo_as[AdcIndex_u8].IsConfigured_b == (t_bool)True)
+        adcInfo_ps =  (t_sFMKCDA_AdcInfo *)(&g_AdcInfo_as[AdcIndex_u8]);
+        if(adcInfo_ps->nbChnlToCfg_u8 > (t_uint32)0)
         {
-            Ret_e = s_FMKCDA_Set_BspChannelCfg(c_FmkCda_HwVrefCfg[AdcIndex_u8].adc_e,
-                                            c_FmkCda_HwVrefCfg[AdcIndex_u8].chnl_e);
-            
-            //----- Different ADC has the same link for Vref -> it's OK ----//
-            if(Ret_e == RC_ERROR_ALREADY_CONFIGURED)
+            //---- first configure the adc instance ----//
+            Ret_e = s_FMKCDA_Set_BspAdcCfg((t_eFMKCDA_Adc)AdcIndex_u8, FMKCDA_ADC_CFG_SCAN_DMA);
+            //---- configure Vref Channel ----//
+            if(Ret_e == RC_OK)
             {
-                Ret_e = RC_OK;
+                //---- if the adc have his own vref channel, congigure it ----//
+                if(c_FmkCda_HwVrefCfg[AdcIndex_u8].adc_e == (t_eFMKCDA_Adc)AdcIndex_u8)
+                {
+                    adcInfo_ps->nbChnlToCfg_u8++; // always configure the vref channel, maybe put if adc != 2
+                    Ret_e = s_FMKCDA_Set_BspChannelCfg(c_FmkCda_HwVrefCfg[AdcIndex_u8].adc_e,
+                                                    c_FmkCda_HwVrefCfg[AdcIndex_u8].chnl_e);
+                    
+                    //----- Different ADC has the same link for Vref -> it's OK ----//
+                    if(Ret_e == RC_ERROR_ALREADY_CONFIGURED)
+                    {
+                        Ret_e = RC_OK;
+                    }
+                }
+            }
+            //---- Configure wanted by user channel ----// 
+            if(Ret_e == RC_OK)
+            {   
+                for(idxChannel_u8 = (t_uint8)0 ; idxChannel_u8 < FMKCDA_ADC_CHANNEL_NB ; idxChannel_u8++)
+                {
+                    if(GETBIT(adcInfo_ps->mskChnlToCfg_u32, idxChannel_u8) == BIT_IS_SET_32B)
+                    {
+                        Ret_e = s_FMKCDA_Set_BspChannelCfg((t_eFMKCDA_Adc)AdcIndex_u8, (t_eFMKCDA_AdcChannel)idxChannel_u8);
+                    }
+                }
             }
         }
     }
@@ -554,8 +584,9 @@ static t_eReturnCode s_FMKCDA_Operational(void)
                     {
                         // update information 
                         adcInfo_ps->IsAdcRunning_b = False;
-                        SETBIT_16B(adcInfo_ps->Error_u16, FMKCDA_ERRSTATE_PRESENTS);
                         ASSERT((t_uint16)adcInfo_ps->Error_u16);
+                        adcInfo_ps->Error_u16 = (t_uint16)0;
+                        SETBIT_16B(adcInfo_ps->Error_u16, FMKCDA_ERRSTATE_PRESENTS);
                     }
                     else 
                     {// put the buffer into adc channel block
@@ -693,6 +724,8 @@ static t_eReturnCode s_FMKCDA_Set_BspAdcCfg(t_eFMKCDA_Adc f_Adc_e,
         bspAdcInit_s->Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_128; // Exemple : suréchantillonnage x16
         bspAdcInit_s->Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_7;
         bspAdcInit_s->Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
+        bspAdcInit_s->Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;
+        bspAdcInit_s->NbrOfConversion = (t_uint32)adcInfo_ps->nbChnlToCfg_u8; 
 #else
             #error("Famille STM32 non supportée. Vérifiez la configuration.")
 #endif
@@ -792,25 +825,27 @@ static t_eReturnCode s_FMKCDA_Set_BspChannelCfg(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA
     t_uint32 bspChannel_u32 = 0;
     ADC_ChannelConfTypeDef BspChannelInit_s;
     
-    if((f_Adc_e >= FMKCDA_ADC_NB)
-    || (f_channel_e >= FMKCDA_ADC_CHANNEL_NB))
+    if(f_channel_e >= FMKCDA_ADC_CHANNEL_NB)
     {
         ASSERT((t_uint16)f_channel_e);
         Ret_e = RC_ERROR_PARAM_INVALID;
     }
-    if( (Ret_e == RC_OK)
-    &&  (g_AdcInfo_as[f_Adc_e].IsConfigured_b == (t_bool)False))
+    else if(g_AdcInfo_as[f_Adc_e].IsConfigured_b == (t_bool)False)
     {
         ASSERT((t_uint16)g_AdcInfo_as[f_Adc_e].IsConfigured_b);
         Ret_e = RC_ERROR_MISSING_CONFIG;
     }
-    if((Ret_e == RC_OK)
-    && (g_AdcInfo_as[f_Adc_e].Channel_as[f_channel_e].isConfigured_b == (t_bool)True))
+    else if(g_AdcInfo_as[f_Adc_e].Channel_as[f_channel_e].isConfigured_b == (t_bool)True)
     {
         ASSERT((t_uint16)0);
         Ret_e = RC_ERROR_ALREADY_CONFIGURED;
     }
-    if(Ret_e == RC_OK)
+    else if(g_counterRank_au8[f_Adc_e] > (t_uint8)FMKCDA_ADC_MAX_CONVERSION)
+    {
+        ASSERT((t_uint16)0);
+        Ret_e = RC_ERROR_LIMIT_REACHED;
+    }
+    else
     {
 #ifdef FMKCPU_STM32_ECU_FAMILY_F
         BspChannelInit_s.SamplingTime = ADC_SAMPLETIME_13CYCLES_5; // Configuration spécifique à la famille F
@@ -820,7 +855,7 @@ static t_eReturnCode s_FMKCDA_Set_BspChannelCfg(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA
         BspChannelInit_s.OffsetSign = ADC_OFFSET_SIGN_POSITIVE;  // Offset positif par défaut
         BspChannelInit_s.OffsetSaturation = DISABLE;              // Saturation désactivée
 #elif defined FMKCPU_STM32_ECU_FAMILY_G
-        BspChannelInit_s.SamplingTime = ADC_SAMPLETIME_640CYCLES_5; // Configuration spécifique à la famille G
+        BspChannelInit_s.SamplingTime = ADC_SAMPLETIME_247CYCLES_5; // Configuration spécifique à la famille G
         BspChannelInit_s.SingleDiff = ADC_SINGLE_ENDED;           // Single-ended par défaut
         BspChannelInit_s.OffsetNumber = ADC_OFFSET_NONE;        // Pas d'offset initial
         BspChannelInit_s.Offset = 0;                            // Offset à 0
@@ -830,16 +865,12 @@ static t_eReturnCode s_FMKCDA_Set_BspChannelCfg(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA
         #error("Famille STM32 non supportée. Vérifiez la configuration.")
 #endif
         //----- configure channel -----//
-        Ret_e = FMKCDA_Get_BspChannel(f_channel_e, &bspChannel_u32);
+        Ret_e = FMKCDA_Get_BspChannel(f_Adc_e ,f_channel_e, &bspChannel_u32);
 
         if (Ret_e == RC_OK)
         {
-            //----- For mapping purpose -----// 
-            g_counterRank_au8[f_Adc_e] += (t_uint8)1;
+            BspChannelInit_s.Rank = c_FmkCda_AdcRankTable_ua32[g_counterRank_au8[f_Adc_e]];
             BspChannelInit_s.Channel = bspChannel_u32;
-            BspChannelInit_s.Rank = ADC_REGULAR_RANK_1;
-
-
             //----- configure adc channel -----//
             BspRet_e = HAL_ADC_ConfigChannel(&g_AdcInfo_as[f_Adc_e].bspIsct_s,
                                             &BspChannelInit_s);
@@ -847,7 +878,8 @@ static t_eReturnCode s_FMKCDA_Set_BspChannelCfg(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA
             if (BspRet_e == HAL_OK)
             {
                 //----- update mapping for dma -----//
-                g_AdcBuffer_as[f_Adc_e].BspChnlmapp_ae[(g_counterRank_au8[f_Adc_e] - 1)] = f_channel_e;
+                g_AdcBuffer_as[f_Adc_e].BspChnlmapp_ae[g_counterRank_au8[f_Adc_e]] = f_channel_e;
+                g_counterRank_au8[f_Adc_e] += (t_uint8)1;
 
                 //----- update info -----//
                 g_AdcInfo_as[f_Adc_e].Channel_as[f_channel_e].isConfigured_b = (t_bool)True;
@@ -871,55 +903,42 @@ static t_eReturnCode s_FMKCDA_UpdateChannelValue(t_eFMKCDA_Adc f_Adc_e)
     t_eReturnCode Ret_e = RC_OK;
     t_eFMKCDA_AdcChannel chnl_e = FMKCDA_ADC_CHANNEL_NB;
     t_sFMKCDA_AdcInfo * adcInfo_ps = (t_sFMKCDA_AdcInfo *)(&g_AdcInfo_as[f_Adc_e]);
-    t_sFMKCDA_AdcBuffer * adcBuffer_ps = (t_sFMKCDA_AdcBuffer *)(&g_AdcBuffer_as[f_Adc_e]);
+    t_uint8 AdcCtrRank_u8 = (t_uint8)g_counterRank_au8[f_Adc_e];
     t_sFMKCDA_AdcCalibInfo * adcCalib_ps = (t_sFMKCDA_AdcCalibInfo *)(&g_adcCalibInfo_as[f_Adc_e]);
-    t_uint8 adcCtrRank_u8 = (t_uint8)g_counterRank_au8[f_Adc_e];
-    t_uint8 LLI_u8 = 0;
-    t_uint8 reverseLLI_u8 = 0;
-    t_uint8 idxChnl_u8 = 0; 
-    static t_uint32 lastTime_u32 = 0;
+    t_sFMKCDA_AdcBuffer * adcBuffer_ps = (t_sFMKCDA_AdcBuffer *)(&g_AdcBuffer_as[f_Adc_e]);
+    t_uint8 LLI_u8;
+    t_uint8 idxChnl_u8; 
     t_uint32 currentTime_u32= 0;
+    t_float32 calibValue_f32 = (t_float32)0.0f;
     
     FMKCPU_GetTick(&currentTime_u32);
 
     //------ update calibration point for this adc if needed ------//
-    if((currentTime_u32 - lastTime_u32) > (t_uint32)FMKCDA_CYCLIC_CALIB
+    if((currentTime_u32 - adcCalib_ps->lastCalib_u32) > (t_uint32)FMKCDA_CYCLIC_CALIB
     || adcCalib_ps->isValueSet_b == (t_bool)False)
     {
-        lastTime_u32 = currentTime_u32;
-        chnl_e = c_FmkCda_HwVrefCfg[f_Adc_e].chnl_e;
+        adcCalib_ps->lastCalib_u32 = currentTime_u32;
+        Ret_e = s_FMKCDA_SetAdcCalibration(f_Adc_e, &calibValue_f32);
 
-        //------ Retrieve the Bsp Channel associated ------//
-        for(LLI_u8 = (t_uint8)0 ; LLI_u8 < adcCtrRank_u8 ; LLI_u8++)
+        if(Ret_e == RC_OK)
         {
-            if(chnl_e == adcBuffer_ps->BspChnlmapp_ae[LLI_u8])
-            {
-                break;
-            }
+            adcCalib_ps->cabliValue_f32 = calibValue_f32;
         }
-        
-        if(chnl_e != FMKCDA_ADC_CHANNEL_NB)
-        {//                         max rank in buffer, cause it's in reverse
-            idxChnl_u8 = (t_uint8)((adcCtrRank_u8 - (t_uint8)1) - (t_uint8)LLI_u8);
-
-            adcCalib_ps->cabliValue_f32 = (t_float32)(adcBuffer_ps->savedVal_ua16[idxChnl_u8] 
-                                                            / (t_float32)(*c_FmkCda_VrefCalibAddress_pas16[f_Adc_e]));
-
-            //------ Update Flag Value Set ------//
-            adcCalib_ps->isValueSet_b = (t_bool)True;
-
+        else 
+        {
+            adcCalib_ps->cabliValue_f32 = 1.0f;
         }
+        //------ Update Flag Value Set ------//
+        adcCalib_ps->isValueSet_b = (t_bool)True;
     }
 
     //------ update flag reading ------//
+    
     adcBuffer_ps->flagOpeRW_b = (t_bool)True;
 
-    //------  here the dma load the buffer with FILO method, first in last out ------//
-    reverseLLI_u8 = (t_uint8)(adcCtrRank_u8 - 1);
-
-    for (LLI_u8 = (t_uint8)0 ; LLI_u8 < adcCtrRank_u8 ; LLI_u8++)
+    for (LLI_u8 = (t_uint8)0 ; LLI_u8 < AdcCtrRank_u8 ; LLI_u8++)
     {
-        chnl_e = adcBuffer_ps->BspChnlmapp_ae[reverseLLI_u8];
+        chnl_e = adcBuffer_ps->BspChnlmapp_ae[LLI_u8];
 
         adcInfo_ps->Channel_as[chnl_e].rawValue_u16 = 
             (t_uint16)((t_float32)adcBuffer_ps->savedVal_ua16[LLI_u8] * 
@@ -927,14 +946,80 @@ static t_eReturnCode s_FMKCDA_UpdateChannelValue(t_eFMKCDA_Adc f_Adc_e)
 
         //------ Update flag ------ //
         adcInfo_ps->Channel_as[chnl_e].FlagValueUpdated_b = (t_bool)True;
-        reverseLLI_u8 -= (t_uint8)1;
-    }  
+    }
     //------ update flag reading ------//
     adcBuffer_ps->flagOpeRW_b = (t_bool)False; 
 
     return Ret_e;
 }
 
+/******************************************
+ * s_FMKCDA_SetAdcCalibration
+ *****************************************/
+static t_eReturnCode s_FMKCDA_SetAdcCalibration(t_eFMKCDA_Adc f_Adc_e, t_float32 * f_calibValue_pf32)
+{
+    t_eReturnCode Ret_e;
+        //---- here we set the pointor not neccessarly to the adc buffer
+    //      but the buffer that coutains the calibration value
+    //      cause for example adc does not have vref value, he took the one from Adc1 ----//
+    t_eFMKCDA_Adc vrefAdc_e; 
+    t_uint8 vrefAdcCtrRank_u8;
+    t_eFMKCDA_AdcChannel vrefChannel_e;
+    t_sFMKCDA_AdcBuffer * vrefAdcBuffer_ps;
+    t_uint8 LLI_u8;
+    t_uint8 idxBuffChnl_u8;
+    t_uint16 staticCalibValue_u16;
+
+    if(f_Adc_e >= FMKCDA_ADC_NB)
+    {
+        Ret_e = RC_ERROR_PARAM_INVALID;
+        ASSERT((t_uint16)0);
+    }
+    else if(f_calibValue_pf32 == (t_float32 *)NULL)
+    {
+        Ret_e = RC_ERROR_PTR_NULL;
+        ASSERT((t_uint16)0);
+    }
+    else 
+    {
+        Ret_e = RC_OK;
+        vrefAdc_e = c_FmkCda_HwVrefCfg[f_Adc_e].adc_e;
+        vrefChannel_e = c_FmkCda_HwVrefCfg[f_Adc_e].chnl_e;
+        vrefAdcCtrRank_u8= (t_uint8)g_counterRank_au8[vrefAdc_e];
+        vrefAdcBuffer_ps = (t_sFMKCDA_AdcBuffer * )(&g_AdcBuffer_as[vrefAdc_e]);
+
+        //------ Retrieve the Bsp Channel associated ------//
+        for(LLI_u8 = (t_uint8)0 ; LLI_u8 < vrefAdcCtrRank_u8 ; LLI_u8++)
+        {
+            if(vrefChannel_e == vrefAdcBuffer_ps->BspChnlmapp_ae[LLI_u8])
+            {
+                break;
+            }
+        }
+        //---- means we found the channel ----//
+        if(LLI_u8 != vrefAdcCtrRank_u8)
+        {//                         max rank in buffer, cause it's in reverse
+            idxBuffChnl_u8 = (t_uint8)(LLI_u8);
+            staticCalibValue_u16 = (t_uint16)*c_FmkCda_VrefCalibAddress_pas16[f_Adc_e];
+
+            if((staticCalibValue_u16 > (t_uint16)0)
+            && (vrefAdcBuffer_ps->savedVal_ua16[idxBuffChnl_u8] > (t_uint16)0))
+            {
+                //                                  the adc verefint value calculate by the adc 
+                *f_calibValue_pf32 = (t_float32)(vrefAdcBuffer_ps->savedVal_ua16[idxBuffChnl_u8] 
+                                                / (t_float32)(staticCalibValue_u16));
+
+            }
+            else 
+            {
+                *f_calibValue_pf32 = (t_float32)1.0f;
+                //ASSERT((t_uint16)0);
+            }
+        }
+    }
+
+    return Ret_e;
+}
 //********************************************************************************
 //                      HAL_Callback Implementation
 //********************************************************************************

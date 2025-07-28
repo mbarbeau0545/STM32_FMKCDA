@@ -132,15 +132,13 @@
     * 
     *	@param[in]  f_Adc_e               : enum adc, value from @ref t_eFMKCDA_Adc
     *	@param[in]  f_channel_e           : enum adc channel, value from @ref t_eFMKCDA_AdcChannel
-    *	@param[in]  f_adcCfg_e            : enum adc config, value from  @ref t_eFMKCDA_HwAdcCfg
     *
     *   @retval RC_OK                               @ref RC_OK
     *   @retval RC_WARNING_WRONG_STATE              @ref RC_ERROR_WARNING_STATE
     *   @retval RC_ERROR_ALREADY_CONFIGURED             @ref RC_ERROR_ALREADY_CONFIGURED
     */
     t_eReturnCode FMKCDA_Set_AdcChannelCfg( t_eFMKCDA_Adc f_Adc_e, 
-                                            t_eFMKCDA_AdcChannel f_channel_e,
-                                            t_eFMKCDA_HwAdcCfg   f_adcCfg_e);
+                                            t_eFMKCDA_AdcChannel f_channel_e);
     /**
     *
     *	@brief      Function to get the analog value from a adc channel
