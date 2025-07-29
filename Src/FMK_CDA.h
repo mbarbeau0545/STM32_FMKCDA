@@ -150,7 +150,7 @@
     * 
     *	@param[in]  f_Adc_e               : enum adc, value from @ref t_eFMKCDA_Adc
     *	@param[in]  f_channel_e           : enum adc channel, value from @ref t_eFMKCDA_AdcChannel
-    *	@param[in]  f_AnaMeasure_u16            : enum adc config, value from  @ref t_eFMKCDA_HwAdcCfg
+    *	@param[in]  f_AnaMeasure_pf32            : container variable
     *
     *   @retval RC_OK                               @ref RC_OK
     *   @retval RC_ERROR_PTR_NULL                   @ref RC_ERROR_PTR_NUL
@@ -160,7 +160,28 @@
     */
     t_eReturnCode FMKCDA_Get_AnaChannelMeasure( t_eFMKCDA_Adc f_Adc_e, 
                                                 t_eFMKCDA_AdcChannel f_channel_e, 
-                                                t_uint16 *f_AnaMeasure_u16);
+                                                t_float32 *f_AnaMeasure_pf32);
+    /**
+    *
+    *	@brief      Function to get the analog value from a adc channel
+    *   @note       This function has to be used in every adc configuration 
+    *               except the ones involving interrupt.\n
+    *               if the conversion of adc is done and the value is updated,
+    *               this function store the rawAnalog value in f_AnaMeasure_u16.\n
+    *               else return 0 and retcode NO_OPERATION
+    * 
+    *	@param[in]  f_Adc_e               : enum adc, value from @ref t_eFMKCDA_Adc
+    *	@param[in]  f_channel_e           : enum adc channel, value from @ref t_eFMKCDA_AdcChannel
+    *	@param[in]  f_AnaMeasure_pf32            : container variable
+    *
+    *   @retval RC_OK                               @ref RC_OK
+    *   @retval RC_ERROR_PTR_NULL                   @ref RC_ERROR_PTR_NUL
+    *   @retval RC_ERROR_WRONG_STATE              @ref RC_ERROR_WRONG_STATE
+    *   @retval RC_WARNING_NO_OPERATION             @ref RC_WARNING_NO_OPERATION
+    *   @retval RC_ERROR_MODULE_NOT_INITIALIZED     @ref RC_ERROR_MODULE_NOT_INITIALIZED
+    */
+    t_eReturnCode FMKCDA_Get_AnaInternSnsMeasure(   t_eFMKCDA_AdcInternSns f_AdcInternSns_e, 
+                                                    t_float32 *f_AnaMeasure_pf32);
     /**
     *
     *	@brief      Function to get the error code for a adc_channel
