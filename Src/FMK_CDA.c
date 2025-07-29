@@ -50,7 +50,7 @@ typedef struct
 typedef struct
 {
     t_uint16 rawValue_u16;              /**< the analog value for this channel */
-    t_bool FlagValueUpdated_b;          /**< Flag to know when the rawvalue is available */
+    t_float32 adcValVolt_f32;
     t_bool isConfigured_b;          /**< Flag to know if the channel if configured well */
 } t_sFMKCDA_ChnlInfo;
 
@@ -268,6 +268,7 @@ t_eReturnCode FMKCDA_Init(void)
         { // all channel for a adc
             adcInfo_ps->Channel_as[chnlIndex_u8].isConfigured_b = (t_bool)False;
             adcInfo_ps->Channel_as[chnlIndex_u8].rawValue_u16 = (t_uint16)0;
+            adcInfo_ps->Channel_as[chnlIndex_u8].adcValVolt_f32 = (t_float32)0;
 
             g_AdcBuffer_as[idxAdc_u8].BspChnlmapp_ae[chnlIndex_u8] = FMKCDA_ADC_CHANNEL_NB;
             g_AdcBuffer_as[idxAdc_u8].rawValue_au32[chnlIndex_u8] = (t_uint32)0;
@@ -392,7 +393,7 @@ t_eReturnCode FMKCDA_Set_AdcChannelCfg( t_eFMKCDA_Adc f_Adc_e,
 t_eReturnCode FMKCDA_Get_AnaChannelMeasure(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA_AdcChannel f_channel_e, t_float32 *f_AnaMeasure_pf32)
 {
     t_eReturnCode Ret_e = RC_OK;
-    t_sFMKCDA_ChnlInfo * cnlInfo_ps;
+    t_sFMKCDA_ChnlInfo * chnlInfo_ps;
     t_sFMKCDA_AdcInfo * adcInfo_ps;
 
     if (f_Adc_e >= FMKCDA_ADC_NB 
@@ -413,10 +414,10 @@ t_eReturnCode FMKCDA_Get_AnaChannelMeasure(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA_AdcC
     if(Ret_e == RC_OK)
     {
         adcInfo_ps = (t_sFMKCDA_AdcInfo *)(&g_AdcInfo_as[f_Adc_e]);
-        cnlInfo_ps = (t_sFMKCDA_ChnlInfo *)(&g_AdcInfo_as[f_Adc_e].Channel_as[f_channel_e]);
+        chnlInfo_ps = (t_sFMKCDA_ChnlInfo *)(&g_AdcInfo_as[f_Adc_e].Channel_as[f_channel_e]);
 
         if(adcInfo_ps->IsConfigured_b == (t_bool)False
-        || cnlInfo_ps->isConfigured_b == (t_bool)False)
+        || chnlInfo_ps->isConfigured_b == (t_bool)False)
         {
             Ret_e = RC_ERROR_MISSING_CONFIG;
             ASSERT((t_uint16)Ret_e);
@@ -426,24 +427,13 @@ t_eReturnCode FMKCDA_Get_AnaChannelMeasure(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA_AdcC
             Ret_e = RC_WARNING_BUSY;
         }
         if (Ret_e == RC_OK)
+        {            
+            *f_AnaMeasure_pf32 = chnlInfo_ps->adcValVolt_f32;
+            *f_AnaMeasure_pf32 *= FMKCDA_ADC_VOLT_PROMILLE;
+        }
+        else 
         {
-            
-            //----- give the last raw analog value if value is updated -----//
-            if (cnlInfo_ps->FlagValueUpdated_b == (t_bool)True)
-            {
-                *f_AnaMeasure_pf32 = (t_float32)((t_float32)(cnlInfo_ps->rawValue_u16 
-                                                                * g_adcCalibInfo_as[f_Adc_e].cabliValue_f32 
-                                                                / (t_float32)FMKCDA_ADC_RESOLUTION));
-                *f_AnaMeasure_pf32 *= FMKCDA_ADC_VOLT_PROMILLE;
-
-                //----- update flag for this channel -----//
-                cnlInfo_ps->FlagValueUpdated_b = (t_bool)False;
-            }
-            else
-            {
-                *f_AnaMeasure_pf32 = (t_uint16)0;
-                Ret_e = RC_WARNING_NO_OPERATION;
-            }
+            *f_AnaMeasure_pf32 = (t_float32)0.0f;
         }
     }
     return Ret_e;
@@ -456,8 +446,12 @@ t_eReturnCode FMKCDA_Get_AnaInternSnsMeasure(   t_eFMKCDA_AdcInternSns f_AdcInte
                                                 t_float32 *f_AnaMeasure_pf32)
 {
     t_eReturnCode Ret_e;
-    t_float32 rawAnaMeasure_f32 = 0.0f;
+    t_eFMKCDA_Adc adcInterSn_e;
+    t_eFMKCDA_AdcChannel ChnlSnsIntern_e;
+    t_sFMKCDA_AdcInfo * adcInfo_ps;
+    t_sFMKCDA_ChnlInfo * chnlInfo_ps;
     t_float32 snsAnaMeasure_f32 = 0.0f;
+    t_float32 calibValue_f32;
 
     if(f_AdcInternSns_e >= FMKCDA_ADC_INTERN_NB)
     {
@@ -472,14 +466,28 @@ t_eReturnCode FMKCDA_Get_AnaInternSnsMeasure(   t_eFMKCDA_AdcInternSns f_AdcInte
     }
     else 
     {
-        Ret_e = FMKCDA_Get_AnaChannelMeasure(   c_FmkCda_HwInternalSnsCfg_as[f_AdcInternSns_e].adcCfg_s.adc_e,
-                                                c_FmkCda_HwInternalSnsCfg_as[f_AdcInternSns_e].adcCfg_s.chnl_e,
-                                                &rawAnaMeasure_f32);
+        Ret_e = RC_OK;
+        adcInterSn_e = c_FmkCda_HwInternalSnsCfg_as[f_AdcInternSns_e].adcCfg_s.adc_e;
+        ChnlSnsIntern_e = c_FmkCda_HwInternalSnsCfg_as[f_AdcInternSns_e].adcCfg_s.chnl_e;
+        adcInfo_ps = (t_sFMKCDA_AdcInfo *)(&g_AdcInfo_as[adcInterSn_e]);
+        chnlInfo_ps = (t_sFMKCDA_ChnlInfo *)(&g_AdcInfo_as[adcInterSn_e].Channel_as[ChnlSnsIntern_e]);
+        
+        if(adcInfo_ps->IsConfigured_b == (t_bool)False
+        || chnlInfo_ps->isConfigured_b == (t_bool)False)
+        {
+            Ret_e = RC_ERROR_MISSING_CONFIG;
+            ASSERT((t_uint16)Ret_e);
+        }
+        if(adcInfo_ps->Error_u16 != FMKCDA_ERRSTATE_OK)
+        {
+            Ret_e = RC_WARNING_BUSY;
+        }
         if(Ret_e == RC_OK)
         {
             //--- see if operation has to be made ans raw signal value ----//
-            Ret_e = FMKCDA_ConvertRawInterSnsValue(f_AdcInternSns_e,
-                                                    rawAnaMeasure_f32,
+            Ret_e = FMKCDA_ConvertRawInterSnsValue( f_AdcInternSns_e,
+                                                    chnlInfo_ps->rawValue_u16,
+                                                    g_adcCalibInfo_as[adcInterSn_e].cabliValue_f32,
                                                     &snsAnaMeasure_f32,
                                                     (const volatile t_uint16 *)c_FmkCda_HwInternalSnsAddress_pau16);
             if(Ret_e == RC_OK)
@@ -491,7 +499,12 @@ t_eReturnCode FMKCDA_Get_AnaInternSnsMeasure(   t_eFMKCDA_AdcInternSns f_AdcInte
                 *f_AnaMeasure_pf32 = 0.0f;
             }
         }
+        else 
+        {
+            *f_AnaMeasure_pf32 = 0.0f;
+        }
     }
+
     return Ret_e;
 }
 /*********************************
@@ -1028,12 +1041,16 @@ static t_eReturnCode s_FMKCDA_UpdateChannelValue(t_eFMKCDA_Adc f_Adc_e)
     for (LLI_u8 = (t_uint8)0 ; LLI_u8 < AdcCtrRank_u8 ; LLI_u8++)
     {
         chnl_e = adcBuffer_ps->BspChnlmapp_ae[LLI_u8];
-
+        
+        //---- raw value update ----//
         adcInfo_ps->Channel_as[chnl_e].rawValue_u16 = 
             (t_uint16)(adcBuffer_ps->savedVal_ua16[LLI_u8]);
+        //---- millivolt value update ----//
+        adcInfo_ps->Channel_as[chnl_e].adcValVolt_f32 = (t_float32)(
+                                                                (t_float32)(adcInfo_ps->Channel_as[chnl_e].rawValue_u16 
+                                                                * adcCalib_ps->cabliValue_f32 
+                                                                / (t_float32)FMKCDA_ADC_RESOLUTION));
 
-        //------ Update flag ------ //
-        adcInfo_ps->Channel_as[chnl_e].FlagValueUpdated_b = (t_bool)True;
     }
 
     return Ret_e;
