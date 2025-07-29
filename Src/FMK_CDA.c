@@ -1012,12 +1012,12 @@ static t_eReturnCode s_FMKCDA_UpdateChannelValue(t_eFMKCDA_Adc f_Adc_e)
 
     //---- first copy into saved buffer the raw value give by the dma ----//
     //---- to do so we momently disable ISR ----//
-    __disable_irq();
+    (void)FMKCPU_Set_NVICState(adcInfo_ps->c_IRQNType_e, FMKCPU_NVIC_OPE_DISABLE);
     for(LLI_u8 = (t_uint8)0 ; LLI_u8 < (t_uint8)(AdcCtrRank_u8) ; LLI_u8++)
     {
         adcBuffer_ps->savedVal_ua16[LLI_u8] = (t_uint16)adcBuffer_ps->rawValue_au32[LLI_u8];
     }
-    __enable_irq();
+    (void)FMKCPU_Set_NVICState(adcInfo_ps->c_IRQNType_e, FMKCPU_NVIC_OPE_ENABLE);
 
     //------ update calibration point for this adc if needed ------//
     if((currentTime_u32 - adcCalib_ps->lastCalib_u32) > (t_uint32)FMKCDA_CYCLIC_CALIB
