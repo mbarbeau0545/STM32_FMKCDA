@@ -16,6 +16,7 @@
 #include "FMK_CFG/FMKCFG_ConfigFiles/FMKCDA_ConfigPrivate.h"
 #include "FMK_CFG/FMKCFG_ConfigSpecific/FMKCDA_ConfigSpecific.h"
 #include "APP_CTRL/APP_SYS/Src/APP_SYS.h"
+#include "3_APP/APP_CTRL/APP_SDM/Src/APP_SDM.h"
 
 
 // ********************************************************************
@@ -63,12 +64,13 @@ typedef struct
     t_eFMKCPU_ClockPort         c_clock_e;                              /**< constant to store the clock for each ADC */
     t_eFMKCPU_IRQNType          c_IRQNType_e;                           /**< constant to store the IRQN for each ADC */
     t_eFMKCPU_DmaRqst           c_DmaAdc_e;
-    t_bool                      IsConfigured_b;                      /**< Flag to know if the ADC is configured */
-    t_bool                      IsAdcRunning_b;                             /**< Flag to know if the Adc is running a conversion */
-    t_bool                      flagErrDetected_b;                         /**< Flag in DMA/Interrupt mode Error Callback has been call */                 
-    t_uint16                    Error_u16;                                /**< Store the adc error status */
-    t_uint32                    mskChnlToCfg_u32;                         /**< mask with all channel to configure */
-    t_uint8                     nbChnlToCfg_u8;                             /**< Number of channel to configure */
+    t_bool                      IsConfigured_b;                         /**< Flag to know if the ADC is configured */
+    t_bool                      IsAdcRunning_b;                         /**< Flag to know if the Adc is running a conversion */
+    t_bool                      flagErrDetected_b;                      /**< Flag in DMA/Interrupt mode Error Callback has been call */                 
+    t_eFMKCDA_AdcErrState       adcError_e;                            /**< Store the adc error status */
+    t_uint32                    lastCbError_u32;                        /**< To know when the last error has been submitted */    
+    t_uint32                    mskChnlToCfg_u32;                       /**< mask with all channel to configure */
+    t_uint8                     nbChnlToCfg_u8;                         /**< Number of channel to configure */
 } t_sFMKCDA_AdcInfo;
 
 typedef struct
@@ -253,7 +255,7 @@ t_eReturnCode FMKCDA_Init(void)
         adcInfo_ps->c_IRQNType_e = c_FmkCda_AdcCfg_as[idxAdc_u8].c_IRQNType_e;
         adcInfo_ps->c_DmaAdc_e = c_FmkCda_AdcCfg_as[idxAdc_u8].c_DmaAdc_e;
         adcInfo_ps->bspIsct_s.Instance = c_FmkCda_AdcCfg_as[idxAdc_u8].adcTypedef_ps;
-        adcInfo_ps->Error_u16 = FMKCDA_ERRSTATE_OK;
+        adcInfo_ps->adcError_e = FMKCDA_ERRSTATE_OK;
         
         g_adcCalibInfo_as[idxAdc_u8].cabliValue_f32 = (t_float32)0.0;
         g_adcCalibInfo_as[idxAdc_u8].isValueSet_b = (t_bool)False;
@@ -422,7 +424,7 @@ t_eReturnCode FMKCDA_Get_AnaChannelMeasure(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA_AdcC
             Ret_e = RC_ERROR_MISSING_CONFIG;
             ASSERT((t_uint16)Ret_e);
         }
-        if(adcInfo_ps->Error_u16 != FMKCDA_ERRSTATE_OK)
+        if(adcInfo_ps->adcError_e != FMKCDA_ERRSTATE_OK)
         {
             Ret_e = RC_WARNING_BUSY;
         }
@@ -451,7 +453,6 @@ t_eReturnCode FMKCDA_Get_AnaInternSnsMeasure(   t_eFMKCDA_AdcInternSns f_AdcInte
     t_sFMKCDA_AdcInfo * adcInfo_ps;
     t_sFMKCDA_ChnlInfo * chnlInfo_ps;
     t_float32 snsAnaMeasure_f32 = 0.0f;
-    t_float32 calibValue_f32;
 
     if(f_AdcInternSns_e >= FMKCDA_ADC_INTERN_NB)
     {
@@ -478,7 +479,7 @@ t_eReturnCode FMKCDA_Get_AnaInternSnsMeasure(   t_eFMKCDA_AdcInternSns f_AdcInte
             Ret_e = RC_ERROR_MISSING_CONFIG;
             ASSERT((t_uint16)Ret_e);
         }
-        if(adcInfo_ps->Error_u16 != FMKCDA_ERRSTATE_OK)
+        if(adcInfo_ps->adcError_e != FMKCDA_ERRSTATE_OK)
         {
             Ret_e = RC_WARNING_BUSY;
         }
@@ -489,7 +490,7 @@ t_eReturnCode FMKCDA_Get_AnaInternSnsMeasure(   t_eFMKCDA_AdcInternSns f_AdcInte
                                                     chnlInfo_ps->rawValue_u16,
                                                     g_adcCalibInfo_as[adcInterSn_e].cabliValue_f32,
                                                     &snsAnaMeasure_f32,
-                                                    (const volatile t_uint16 *)c_FmkCda_HwInternalSnsAddress_pau16);
+                                                    c_FmkCda_HwInternalSnsAddress_pau16);
             if(Ret_e == RC_OK)
             {
                 *f_AnaMeasure_pf32 = snsAnaMeasure_f32;
@@ -526,7 +527,7 @@ t_eReturnCode FMKCDA_Get_AdcError(t_eFMKCDA_Adc f_adc_e, t_uint16 * f_chnlErrInf
     }
     if(Ret_e == RC_OK)
     {
-        *f_chnlErrInfo_pu16 = g_AdcInfo_as[f_adc_e].Error_u16;
+        *f_chnlErrInfo_pu16 = g_AdcInfo_as[f_adc_e].adcError_e;
     }
     
     return Ret_e;
@@ -663,14 +664,14 @@ static t_eReturnCode s_FMKCDA_Operational(void)
             //------ if the adc is not running and the adc is configured,
             //       launch a conversion only if error_state = NO_ERROR or PRESENTS ------//
             if((adcInfo_ps->IsAdcRunning_b == (t_bool)False)
-            && ((adcInfo_ps->Error_u16 == FMKCDA_ERRSTATE_OK)
-            ||  (adcInfo_ps->Error_u16 == FMKCDA_ERRSTATE_PRESENTS)))
+            && ((adcInfo_ps->adcError_e == FMKCDA_ERRSTATE_OK)
+            ||  (adcInfo_ps->adcError_e == FMKCDA_ERRSTATE_PRESENTS)))
             {
                 Ret_e = s_FMKCDA_StartAdcConversion((t_eFMKCDA_Adc)idxAdc_u8, g_AdcInfo_as[idxAdc_u8].HwCfg_e);
                 if(Ret_e == RC_OK) 
                 {
                     g_AdcInfo_as[idxAdc_u8].IsAdcRunning_b = True;
-                    adcInfo_ps->Error_u16 = FMKCDA_ERRSTATE_OK;
+                    adcInfo_ps->adcError_e = FMKCDA_ERRSTATE_OK;
                 }
             }
             else
@@ -683,8 +684,8 @@ static t_eReturnCode s_FMKCDA_Operational(void)
                 {
                     // update information 
                     adcInfo_ps->IsAdcRunning_b = False;
-                    ASSERT((t_uint16)adcInfo_ps->Error_u16);
-                    adcInfo_ps->Error_u16 =  FMKCDA_ERRSTATE_PRESENTS;
+                    ASSERT((t_uint16)adcInfo_ps->adcError_e);
+                    adcInfo_ps->adcError_e =  FMKCDA_ERRSTATE_PRESENTS;
                 }
                 else 
                 {// put the buffer into adc channel block
@@ -755,26 +756,60 @@ static t_eReturnCode s_FMKCDA_PerformDiagnostic(t_eFMKCDA_Adc f_adc_e)
     t_eReturnCode Ret_e = RC_OK;
     t_uint32 adcErr_u32 = HAL_ADC_ERROR_NONE;
     t_sFMKCDA_AdcInfo * adcInfo_ps;
+    t_uint32 currentTime_u32;
 
     adcInfo_ps = (t_sFMKCDA_AdcInfo *)&g_AdcInfo_as[f_adc_e];
     adcErr_u32 = HAL_ADC_GetError(&adcInfo_ps->bspIsct_s);
+    FMKCPU_GetTick(&currentTime_u32);
     
-    if(adcErr_u32 != HAL_ADC_ERROR_NONE)
+    //----- mng mapping error with enum -----//
+    if((adcErr_u32 & HAL_ADC_ERROR_NONE) == HAL_ADC_ERROR_NONE)
     {
-        //----- mng mapping error with enum -----//
-        if((adcErr_u32 & HAL_ADC_ERROR_OVR) == HAL_ADC_ERROR_OVR)
-        {
-            adcInfo_ps->Error_u16 = FMKCDA_ERRSTATE_ERR_OVR;
-        }
-        if((adcErr_u32 & HAL_ADC_ERROR_DMA) == HAL_ADC_ERROR_DMA)
-        {
-            adcInfo_ps->Error_u16 = FMKCDA_ERRSTATE_ERR_DMA;
-        }
-        if((adcErr_u32 & HAL_ADC_ERROR_INTERNAL) == HAL_ADC_ERROR_INTERNAL)
-        {
-            adcInfo_ps->Error_u16 = FMKCDA_ERRSTATE_ERR_INTERNAL;
-        }
+        adcInfo_ps->adcError_e = FMKCDA_ERRSTATE_OK;
     }
+    else if((adcErr_u32 & HAL_ADC_ERROR_OVR) == HAL_ADC_ERROR_OVR)
+    {
+        adcInfo_ps->adcError_e = FMKCDA_ERRSTATE_OVR;
+    }
+    else if((adcErr_u32 & HAL_ADC_ERROR_DMA) == HAL_ADC_ERROR_DMA)
+    {
+        adcInfo_ps->adcError_e = FMKCDA_ERRSTATE_DMA;
+    }
+    else if((adcErr_u32 & HAL_ADC_ERROR_INTERNAL) == HAL_ADC_ERROR_INTERNAL)
+    {
+        adcInfo_ps->adcError_e = FMKCDA_ERRSTATE_INTERNAL;
+    }
+    else if((adcErr_u32 & HAL_ADC_ERROR_JQOVF) == HAL_ADC_ERROR_JQOVF)
+    {
+        adcInfo_ps->adcError_e = FMKCDA_ERRSTATE_JQOVF;
+    }
+    else 
+    {
+        ASSERT((t_uint16)adcErr_u32);
+    }
+    
+    //---- see if errros is still active ----//
+    if(adcInfo_ps->adcError_e != FMKCDA_ERRSTATE_OK)
+    {
+        APPSDM_ReportDiagEvnt(  APPSDM_DIAG_ITEM_FMK_CDA_OPE_ERROR,
+                                APPSDM_DIAG_ITEM_REPORT_FAIL,
+                                (t_uint16)f_adc_e,
+                                (t_uint16)adcInfo_ps->adcError_e);
+        //---- reset the serial line state ans see if callback still call us with errors ----//
+        if((currentTime_u32 - adcInfo_ps->lastCbError_u32) > 100)
+        {
+            adcInfo_ps->adcError_e = FMKCDA_ERRSTATE_OK;
+        }
+
+    }
+    else 
+    {
+        adcInfo_ps->flagErrDetected_b = (t_bool)FALSE;
+        APPSDM_ReportDiagEvnt(  APPSDM_DIAG_ITEM_FMK_CDA_OPE_ERROR,
+                                APPSDM_DIAG_ITEM_REPORT_PASS,
+                                (t_uint16)f_adc_e,
+                                (t_uint16)0);
+    }   
 
     return Ret_e;
 }
@@ -1207,9 +1242,9 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
         //------ update last time the value has been changed and reset bit present error ------//
         FMKCPU_GetTick(&g_AdcBuffer_as[IT_Adc_e].lastUpate_u32);
         //------ reset present bit ------//
-        if(g_AdcInfo_as[IT_Adc_e].Error_u16 == FMKCDA_ERRSTATE_PRESENTS)
+        if(g_AdcInfo_as[IT_Adc_e].adcError_e == FMKCDA_ERRSTATE_PRESENTS)
         {
-            g_AdcInfo_as[IT_Adc_e].Error_u16 = FMKCDA_ERRSTATE_OK;
+            g_AdcInfo_as[IT_Adc_e].adcError_e = FMKCDA_ERRSTATE_OK;
         }
         
     }
@@ -1252,7 +1287,11 @@ void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc)
     }
     if(LLI_u8 < FMKCDA_ADC_NB)
     {
-        g_AdcInfo_as[LLI_u8].flagErrDetected_b = (t_bool)True;
+        FMKCPU_GetTick(&g_AdcInfo_as[LLI_u8].lastCbError_u32);
+        if(g_AdcInfo_as[LLI_u8].flagErrDetected_b == (t_bool)FALSE)
+        {
+            g_AdcInfo_as[LLI_u8].flagErrDetected_b = (t_bool)TRUE;
+        }
     }
     return;
 }

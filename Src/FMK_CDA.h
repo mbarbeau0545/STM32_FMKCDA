@@ -48,15 +48,15 @@
     typedef enum
     {
         FMKCDA_ERRSTATE_OK               = 0x00U,           /**< No error detected on channel */
-        FMKCDA_ERRSTATE_ERR_INTERNAL,                       /**< Internal/ bsp error detected on channel */
-        FMKCDA_ERRSTATE_ERR_OVR,                            /**< overrun error detetcted on channel */
-        FMKCDA_ERRSTATE_ERR_DMA,                            /**< Dma error detetected on channel */
+        FMKCDA_ERRSTATE_INTERNAL,                       /**< Internal/ bsp error detected on channel */
+        FMKCDA_ERRSTATE_OVR,                            /**< overrun error detetcted on channel */
+        FMKCDA_ERRSTATE_DMA,                            /**< Dma error detetected on channel */
         FMKCDA_ERRSTATE_CB,                                 /**< callback error detetected on channel */
         FMKCDA_ERRSTATE_JQOVF,                              /**< to do */
         FMKCDA_ERRSTATE_PRESENTS,                           /**< Conversio no longer operate when dma mode circular is choosen */
         FMKCDA_ERRSTATE_UNKNOWN,                            /**< Unknown error detected */
 
-    } t_eFMKCDA_ChnlErrState;
+    } t_eFMKCDA_AdcErrState;
     /* CAUTION : Automatic generated code section for Enum: Start */
 
     /* CAUTION : Automatic generated code section for Enum: End */
