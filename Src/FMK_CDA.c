@@ -66,6 +66,7 @@ typedef struct
     t_eFMKCPU_DmaRqst           c_DmaAdc_e;
     t_bool                      IsConfigured_b;                         /**< Flag to know if the ADC is configured */
     t_bool                      IsAdcRunning_b;                         /**< Flag to know if the Adc is running a conversion */
+    t_bool                      isConversionDone_b;                     /**< flag to know if at least one conversion has been done successfully */
     t_bool                      flagErrDetected_b;                      /**< Flag in DMA/Interrupt mode Error Callback has been call */                 
     t_eFMKCDA_AdcErrState       adcError_e;                            /**< Store the adc error status */
     t_uint32                    lastCbError_u32;                        /**< To know when the last error has been submitted */    
@@ -248,6 +249,7 @@ t_eReturnCode FMKCDA_Init(void)
 
         adcInfo_ps->IsConfigured_b       = (t_bool)False;
         adcInfo_ps->IsAdcRunning_b       = (t_bool)False;
+        adcInfo_ps->isConversionDone_b   = (t_bool)False;
         adcInfo_ps->flagErrDetected_b    = (t_bool)False;
         adcInfo_ps->mskChnlToCfg_u32     = (t_uint32)0;
         adcInfo_ps->nbChnlToCfg_u8       = (t_uint8)0; // 
@@ -424,7 +426,8 @@ t_eReturnCode FMKCDA_Get_AnaChannelMeasure(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA_AdcC
             Ret_e = RC_ERROR_MISSING_CONFIG;
             ASSERT((t_uint16)Ret_e);
         }
-        if(adcInfo_ps->adcError_e != FMKCDA_ERRSTATE_OK)
+        if((adcInfo_ps->adcError_e != FMKCDA_ERRSTATE_OK)
+        || (adcInfo_ps->isConversionDone_b == (t_bool)FALSE))
         {
             Ret_e = RC_WARNING_BUSY;
         }
@@ -465,6 +468,10 @@ t_eReturnCode FMKCDA_Get_AnaInternSnsMeasure(   t_eFMKCDA_AdcInternSns f_AdcInte
         Ret_e = RC_ERROR_PTR_NULL;
 
     }
+    else if(g_FmkCda_ModState_e != STATE_CYCLIC_OPE)
+    {
+        Ret_e = RC_WARNING_BUSY;
+    }
     else 
     {
         Ret_e = RC_OK;
@@ -479,7 +486,8 @@ t_eReturnCode FMKCDA_Get_AnaInternSnsMeasure(   t_eFMKCDA_AdcInternSns f_AdcInte
             Ret_e = RC_ERROR_MISSING_CONFIG;
             ASSERT((t_uint16)Ret_e);
         }
-        if(adcInfo_ps->adcError_e != FMKCDA_ERRSTATE_OK)
+        if((adcInfo_ps->adcError_e != FMKCDA_ERRSTATE_OK)
+        || (adcInfo_ps->isConversionDone_b == (t_bool)FALSE))
         {
             Ret_e = RC_WARNING_BUSY;
         }
@@ -1087,6 +1095,7 @@ static t_eReturnCode s_FMKCDA_UpdateChannelValue(t_eFMKCDA_Adc f_Adc_e)
                                                                 / (t_float32)FMKCDA_ADC_RESOLUTION));
 
     }
+    adcInfo_ps->isConversionDone_b = (t_bool)TRUE;
 
     return Ret_e;
 }
