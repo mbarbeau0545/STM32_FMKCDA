@@ -844,43 +844,55 @@ static t_eReturnCode s_FMKCDA_Set_BspAdcCfg(t_eFMKCDA_Adc f_Adc_e,
         adcInfo_ps =  (t_sFMKCDA_AdcInfo *)(&g_AdcInfo_as[f_Adc_e]);
 
         //----- Generic Configuration -----//
-        bspAdcInit_s->ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
-        bspAdcInit_s->Overrun = ADC_OVR_DATA_OVERWRITTEN;
-        bspAdcInit_s->Resolution = ADC_RESOLUTION_12B;
-        bspAdcInit_s->DataAlign = ADC_DATAALIGN_RIGHT;
-        bspAdcInit_s->EOCSelection = ADC_EOC_SEQ_CONV;
+        bspAdcInit_s->ClockPrescaler      = ADC_CLOCK_SYNC_PCLK_DIV4;
+        bspAdcInit_s->Overrun            = ADC_OVR_DATA_OVERWRITTEN;
+        bspAdcInit_s->Resolution         = ADC_RESOLUTION_12B;
+        bspAdcInit_s->EOCSelection       = ADC_EOC_SEQ_CONV;
 
-        //----- Specific Configuration -----//
-#ifdef FMKCPU_STM32_ECU_FAMILY_F
-        bspAdcInit_s->ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
-        bspAdcInit_s->SamplingTimeCommon = ADC_SAMPLETIME_55CYCLES_5; // Valeur par défaut
-#elif defined FMKCPU_STM32_ECU_FAMILY_G
-        bspAdcInit_s->ScanConvMode = ADC_SCAN_ENABLE;
-        bspAdcInit_s->LowPowerAutoWait = DISABLE; // Désactiver l'attente automatique par défaut
-        bspAdcInit_s->SamplingMode = ADC_SAMPLING_MODE_NORMAL; // Mode d'échantillonnage normal
-        bspAdcInit_s->GainCompensation = 0; // Pas de compensation de gain par défaut
+#if defined(FMKCPU_STM32_ECU_FAMILY_F)
+            // STM32Fxxx (exemple F4, F1)
+            bspAdcInit_s->DataAlign          = ADC_DATAALIGN_RIGHT;
+            bspAdcInit_s->ScanConvMode      = ADC_SCAN_DIRECTION_FORWARD;
+            bspAdcInit_s->SamplingTimeCommon = ADC_SAMPLETIME_55CYCLES_5; // Valeur par défaut
 
-        //----- Over samppling parameter -----//
-        bspAdcInit_s->OversamplingMode = ENABLE;
-        bspAdcInit_s->Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_128; // Exemple : suréchantillonnage x16
-        bspAdcInit_s->Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_7;
-        bspAdcInit_s->Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
-        bspAdcInit_s->Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;
-        bspAdcInit_s->NbrOfConversion = (t_uint32)adcInfo_ps->nbChnlToCfg_u8; 
+#elif defined(FMKCPU_STM32_ECU_FAMILY_G4)
+            // STM32G4
+            bspAdcInit_s->ScanConvMode      = ADC_SCAN_ENABLE;
+            bspAdcInit_s->LowPowerAutoWait  = DISABLE;
+            bspAdcInit_s->DataAlign          = ADC_DATAALIGN_RIGHT;
+            bspAdcInit_s->SamplingMode      = ADC_SAMPLING_MODE_NORMAL;
+            bspAdcInit_s->GainCompensation  = 0;
+
+            // Oversampling config
+            bspAdcInit_s->OversamplingMode = ENABLE;
+            bspAdcInit_s->Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_128;
+            bspAdcInit_s->Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_7;
+            bspAdcInit_s->Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
+            bspAdcInit_s->Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;
+
+            bspAdcInit_s->NbrOfConversion   = (t_uint32)adcInfo_ps->nbChnlToCfg_u8;
+
+#elif defined(FMKCPU_STM32_ECU_FAMILY_H7)
+            // STM32H7 (exemple H723)
+            bspAdcInit_s->ClockPrescaler      = ADC_CLOCK_SYNC_PCLK_DIV4; // Repris dans generic, mais peut être redéfini
+            bspAdcInit_s->Resolution          = ADC_RESOLUTION_16B;
+            bspAdcInit_s->ScanConvMode        = ADC_SCAN_ENABLE;           // STM32H7 utilise ADC_SCAN_ENABLE
+            bspAdcInit_s->EOCSelection        = ADC_EOC_SEQ_CONV;
+
+            // STM32H7 dispose d'autres options spécifiques
+            bspAdcInit_s->LowPowerAutoWait    = DISABLE;
+            // Oversampling configuration STM32H7
+            bspAdcInit_s->OversamplingMode    = ENABLE;
+            bspAdcInit_s->Oversampling.Ratio  = (t_uint32)(1<< 7); // 128
+            bspAdcInit_s->Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_7; // 128 = 2^7
+            bspAdcInit_s->Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
+            bspAdcInit_s->Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;
+
+            bspAdcInit_s->NbrOfConversion     = (t_uint32)adcInfo_ps->nbChnlToCfg_u8;
+
 #else
-            #error("Famille STM32 non supportée. Vérifiez la configuration.")
+    #error "Famille STM32 non supportée. Vérifiez la configuration."
 #endif
-
-        // Gestion du mode DMA
-        if (FMKCPU_ADC_DMA_MODE == DMA_CIRCULAR) 
-        {
-            bspAdcInit_s->DMAContinuousRequests = ENABLE;
-        } 
-        else 
-        {
-            bspAdcInit_s->DMAContinuousRequests = DISABLE;
-        }
-
         // Gestion des modes ADC
         switch (f_HwAdcCfg_e) 
         {
@@ -901,7 +913,7 @@ static t_eReturnCode s_FMKCDA_Set_BspAdcCfg(t_eFMKCDA_Adc f_Adc_e,
 
 #ifdef FMKCPU_STM32_ECU_FAMILY_F
                     bspAdcInit_s->ExternalTrigConv = ADC_EXTERNALTRIGCONV_T1_CC4; // Exemple de déclencheur
-#elif defined FMKCPU_STM32_ECU_FAMILY_G
+#elif defined(FMKCPU_STM32_ECU_FAMILY_G4) || defined(FMKCPU_STM32_ECU_FAMILY_H7) 
                     //bspAdcInit_s->ExternalTrigConv = ADC_EXTERNALTRIG1_T21_CC2; // Exemple de déclencheur
 #else
                     #error("Famille STM32 non supportée. Vérifiez la configuration.")
@@ -995,13 +1007,19 @@ static t_eReturnCode s_FMKCDA_Set_BspChannelCfg(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA
         BspChannelInit_s.Offset = 0;                             // Offset à 0
         BspChannelInit_s.OffsetSign = ADC_OFFSET_SIGN_POSITIVE;  // Offset positif par défaut
         BspChannelInit_s.OffsetSaturation = DISABLE;              // Saturation désactivée
-#elif defined FMKCPU_STM32_ECU_FAMILY_G
+#elif defined (FMKCPU_STM32_ECU_FAMILY_G4)
         BspChannelInit_s.SamplingTime = ADC_SAMPLETIME_247CYCLES_5; // Configuration spécifique à la famille G
         BspChannelInit_s.SingleDiff = ADC_SINGLE_ENDED;           // Single-ended par défaut
         BspChannelInit_s.OffsetNumber = ADC_OFFSET_NONE;        // Pas d'offset initial
         BspChannelInit_s.Offset = 0;                            // Offset à 0
         BspChannelInit_s.OffsetSign = ADC_OFFSET_SIGN_POSITIVE;  // Offset positif par défaut
         BspChannelInit_s.OffsetSaturation = DISABLE;           // Saturation désactivée
+#elif defined(FMKCPU_STM32_ECU_FAMILY_H7)
+
+        BspChannelInit_s.SamplingTime       = ADC_SAMPLETIME_16CYCLES_5;  // H7 souvent identique au G4    
+        BspChannelInit_s.SingleDiff         = ADC_SINGLE_ENDED;            // idem G4
+        BspChannelInit_s.OffsetNumber       = ADC_OFFSET_NONE;             // H7 supporte plusieurs offsets
+        BspChannelInit_s.Offset             = 0;
 #else
         #error("Famille STM32 non supportée. Vérifiez la configuration.")
 #endif
