@@ -676,7 +676,8 @@ static t_eReturnCode s_FMKCDA_Operational(void)
             ||  (adcInfo_ps->adcError_e == FMKCDA_ERRSTATE_PRESENTS)))
             {
                 Ret_e = s_FMKCDA_StartAdcConversion((t_eFMKCDA_Adc)idxAdc_u8, g_AdcInfo_as[idxAdc_u8].HwCfg_e);
-                if(Ret_e == RC_OK) 
+                //---- busy means the adc is already running, so there is a problem with Dma callback ----//
+                if((Ret_e == RC_OK) || (Ret_e == RC_WARNING_BUSY)) 
                 {
                     g_AdcInfo_as[idxAdc_u8].IsAdcRunning_b = True;
                     adcInfo_ps->adcError_e = FMKCDA_ERRSTATE_OK;
@@ -846,30 +847,29 @@ static t_eReturnCode s_FMKCDA_Set_BspAdcCfg(t_eFMKCDA_Adc f_Adc_e,
         //----- Generic Configuration -----//
         bspAdcInit_s->ClockPrescaler      = ADC_CLOCK_SYNC_PCLK_DIV4;
         bspAdcInit_s->Overrun            = ADC_OVR_DATA_OVERWRITTEN;
-        bspAdcInit_s->Resolution         = ADC_RESOLUTION_12B;
         bspAdcInit_s->EOCSelection       = ADC_EOC_SEQ_CONV;
-
-#if defined(FMKCPU_STM32_ECU_FAMILY_F)
-            // STM32Fxxx (exemple F4, F1)
-            bspAdcInit_s->DataAlign          = ADC_DATAALIGN_RIGHT;
-            bspAdcInit_s->ScanConvMode      = ADC_SCAN_DIRECTION_FORWARD;
+        
+        #if defined(FMKCPU_STM32_ECU_FAMILY_F)
+        // STM32Fxxx (exemple F4, F1)
+        bspAdcInit_s->DataAlign          = ADC_DATAALIGN_RIGHT;
+        bspAdcInit_s->ScanConvMode      = ADC_SCAN_DIRECTION_FORWARD;
             bspAdcInit_s->SamplingTimeCommon = ADC_SAMPLETIME_55CYCLES_5; // Valeur par défaut
-
-#elif defined(FMKCPU_STM32_ECU_FAMILY_G4)
+            
+            #elif defined(FMKCPU_STM32_ECU_FAMILY_G4)
             // STM32G4
+            bspAdcInit_s->Resolution         = ADC_RESOLUTION_12B;
+            bspAdcInit_s->DataAlign          = ADC_DATAALIGN_RIGHT;
             bspAdcInit_s->ScanConvMode      = ADC_SCAN_ENABLE;
             bspAdcInit_s->LowPowerAutoWait  = DISABLE;
-            bspAdcInit_s->DataAlign          = ADC_DATAALIGN_RIGHT;
             bspAdcInit_s->SamplingMode      = ADC_SAMPLING_MODE_NORMAL;
             bspAdcInit_s->GainCompensation  = 0;
 
             // Oversampling config
             bspAdcInit_s->OversamplingMode = ENABLE;
-            bspAdcInit_s->Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_128;
-            bspAdcInit_s->Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_7;
+            bspAdcInit_s->Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_256; // more than 10 values per ms
+            bspAdcInit_s->Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_8;
             bspAdcInit_s->Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
             bspAdcInit_s->Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;
-
             bspAdcInit_s->NbrOfConversion   = (t_uint32)adcInfo_ps->nbChnlToCfg_u8;
 
 #elif defined(FMKCPU_STM32_ECU_FAMILY_H7)
@@ -877,7 +877,6 @@ static t_eReturnCode s_FMKCDA_Set_BspAdcCfg(t_eFMKCDA_Adc f_Adc_e,
             bspAdcInit_s->ClockPrescaler      = ADC_CLOCK_SYNC_PCLK_DIV4; // Repris dans generic, mais peut être redéfini
             bspAdcInit_s->Resolution          = ADC_RESOLUTION_16B;
             bspAdcInit_s->ScanConvMode        = ADC_SCAN_ENABLE;           // STM32H7 utilise ADC_SCAN_ENABLE
-            bspAdcInit_s->EOCSelection        = ADC_EOC_SEQ_CONV;
 
             // STM32H7 dispose d'autres options spécifiques
             bspAdcInit_s->LowPowerAutoWait    = DISABLE;
@@ -893,7 +892,17 @@ static t_eReturnCode s_FMKCDA_Set_BspAdcCfg(t_eFMKCDA_Adc f_Adc_e,
 #else
     #error "Famille STM32 non supportée. Vérifiez la configuration."
 #endif
-        // Gestion des modes ADC
+
+        // Gestion du mode DMA
+        if (FMKCPU_ADC_DMA_MODE == DMA_CIRCULAR) 
+        {
+            bspAdcInit_s->DMAContinuousRequests = ENABLE;
+        } 
+        else 
+        {
+            bspAdcInit_s->DMAContinuousRequests = DISABLE;
+        }
+
         switch (f_HwAdcCfg_e) 
         {
             case FMKCDA_ADC_CFG_PERIODIC_DMA:
@@ -1016,7 +1025,7 @@ static t_eReturnCode s_FMKCDA_Set_BspChannelCfg(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA
         BspChannelInit_s.OffsetSaturation = DISABLE;           // Saturation désactivée
 #elif defined(FMKCPU_STM32_ECU_FAMILY_H7)
 
-        BspChannelInit_s.SamplingTime       = ADC_SAMPLETIME_16CYCLES_5;  // H7 souvent identique au G4    
+        BspChannelInit_s.SamplingTime       = ADC_SAMPLETIME_247CYCLES_5;  // H7 souvent identique au G4    
         BspChannelInit_s.SingleDiff         = ADC_SINGLE_ENDED;            // idem G4
         BspChannelInit_s.OffsetNumber       = ADC_OFFSET_NONE;             // H7 supporte plusieurs offsets
         BspChannelInit_s.Offset             = 0;
