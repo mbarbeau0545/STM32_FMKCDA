@@ -676,7 +676,8 @@ static t_eReturnCode s_FMKCDA_Operational(void)
             ||  (adcInfo_ps->adcError_e == FMKCDA_ERRSTATE_PRESENTS)))
             {
                 Ret_e = s_FMKCDA_StartAdcConversion((t_eFMKCDA_Adc)idxAdc_u8, g_AdcInfo_as[idxAdc_u8].HwCfg_e);
-                if(Ret_e == RC_OK) 
+                //---- busy means the adc is already running, so there is a problem with Dma callback ----//
+                if((Ret_e == RC_OK) || (Ret_e == RC_WARNING_BUSY)) 
                 {
                     g_AdcInfo_as[idxAdc_u8].IsAdcRunning_b = True;
                     adcInfo_ps->adcError_e = FMKCDA_ERRSTATE_OK;
@@ -854,7 +855,7 @@ static t_eReturnCode s_FMKCDA_Set_BspAdcCfg(t_eFMKCDA_Adc f_Adc_e,
 #ifdef FMKCPU_STM32_ECU_FAMILY_F
         bspAdcInit_s->ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
         bspAdcInit_s->SamplingTimeCommon = ADC_SAMPLETIME_55CYCLES_5; // Valeur par défaut
-#elif defined FMKCPU_STM32_ECU_FAMILY_G
+#elif defined FMKCPU_STM32_ECU_FAMILY_G4
         bspAdcInit_s->ScanConvMode = ADC_SCAN_ENABLE;
         bspAdcInit_s->LowPowerAutoWait = DISABLE; // Désactiver l'attente automatique par défaut
         bspAdcInit_s->SamplingMode = ADC_SAMPLING_MODE_NORMAL; // Mode d'échantillonnage normal
@@ -901,7 +902,7 @@ static t_eReturnCode s_FMKCDA_Set_BspAdcCfg(t_eFMKCDA_Adc f_Adc_e,
 
 #ifdef FMKCPU_STM32_ECU_FAMILY_F
                     bspAdcInit_s->ExternalTrigConv = ADC_EXTERNALTRIGCONV_T1_CC4; // Exemple de déclencheur
-#elif defined FMKCPU_STM32_ECU_FAMILY_G
+#elif defined FMKCPU_STM32_ECU_FAMILY_G4
                     //bspAdcInit_s->ExternalTrigConv = ADC_EXTERNALTRIG1_T21_CC2; // Exemple de déclencheur
 #else
                     #error("Famille STM32 non supportée. Vérifiez la configuration.")
@@ -995,7 +996,7 @@ static t_eReturnCode s_FMKCDA_Set_BspChannelCfg(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA
         BspChannelInit_s.Offset = 0;                             // Offset à 0
         BspChannelInit_s.OffsetSign = ADC_OFFSET_SIGN_POSITIVE;  // Offset positif par défaut
         BspChannelInit_s.OffsetSaturation = DISABLE;              // Saturation désactivée
-#elif defined FMKCPU_STM32_ECU_FAMILY_G
+#elif defined FMKCPU_STM32_ECU_FAMILY_G4
         BspChannelInit_s.SamplingTime = ADC_SAMPLETIME_247CYCLES_5; // Configuration spécifique à la famille G
         BspChannelInit_s.SingleDiff = ADC_SINGLE_ENDED;           // Single-ended par défaut
         BspChannelInit_s.OffsetNumber = ADC_OFFSET_NONE;        // Pas d'offset initial
