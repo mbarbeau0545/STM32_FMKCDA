@@ -294,11 +294,7 @@ t_eReturnCode FMKCDA_Cyclic(void)
     {
         case STATE_CYCLIC_CFG:
         {
-            g_FmkCda_ModState_e = STATE_CYCLIC_WAITING;
-            break;
-        }
-        case STATE_CYCLIC_WAITING:
-        {
+            g_FmkCda_ModState_e = STATE_CYCLIC_PREOPE;
             break;
         }
         case STATE_CYCLIC_PREOPE:
@@ -1076,7 +1072,7 @@ static t_eReturnCode s_FMKCDA_UpdateChannelValue(t_eFMKCDA_Adc f_Adc_e)
         }
         else 
         {
-            adcCalib_ps->cabliValue_f32 = 1.0f;
+            adcCalib_ps->cabliValue_f32 = FMKCDA_ADC_CALIB_VREF;
         }
         //------ Update Flag Value Set ------//
         adcCalib_ps->isValueSet_b = (t_bool)True;
@@ -1162,7 +1158,7 @@ static t_eReturnCode s_FMKCDA_SetAdcCalibration(t_eFMKCDA_Adc f_Adc_e, t_float32
             else 
             {
                 *f_calibValue_pf32 = (t_float32)1.0f;
-                //ASSERT((t_uint16)0);
+                ASSERT((t_uint16)0);
             }
         }
     }
