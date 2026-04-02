@@ -66,12 +66,14 @@ typedef struct
     t_eFMKCPU_DmaRqst           c_DmaAdc_e;
     t_bool                      IsConfigured_b;                         /**< Flag to know if the ADC is configured */
     t_bool                      IsAdcRunning_b;                         /**< Flag to know if the Adc is running a conversion */
+    t_bool                      dmaConfigured_b;                        /**< Not Configured multiple time Dma channels */
     t_bool                      isConversionDone_b;                     /**< flag to know if at least one conversion has been done successfully */
     t_bool                      flagErrDetected_b;                      /**< Flag in DMA/Interrupt mode Error Callback has been call */                 
     t_eFMKCDA_AdcErrState       adcError_e;                            /**< Store the adc error status */
     t_uint32                    lastCbError_u32;                        /**< To know when the last error has been submitted */    
     t_uint32                    mskChnlToCfg_u32;                       /**< mask with all channel to configure */
     t_uint8                     nbChnlToCfg_u8;                         /**< Number of channel to configure */
+    t_bool                      needsRecfg_b;                           /**< Flag indicating channels need reconfiguration during OPE */
 } t_sFMKCDA_AdcInfo;
 
 typedef struct
@@ -216,6 +218,36 @@ static t_eReturnCode s_FMKCDA_UpdateChannelValue(t_eFMKCDA_Adc f_Adc_e);
 static t_eReturnCode s_FMKCDA_SetAdcCalibration(t_eFMKCDA_Adc f_Adc_e, t_float32 * f_calibValue_pf32);
 /**
  *
+ *	@brief      Configure all registered ADC channels.\n
+ *  @note       Iterates through all channels and configures those marked in the
+ *              channel mask. Stops on first error if f_stopOnError is True.\n
+ *
+ *	@param[in]  f_Adc_e               : enum adc, value from @ref t_eFMKCDA_Adc
+ *	@param[in]  f_stopOnError         : stop configuration on first error (True) or continue (False)
+ *
+ * @retval RC_OK                             @ref RC_OK
+ * @retval RC_ERROR_PARAM_INVALID            @ref RC_ERROR_PARAM_INVALID
+ * @retval RC_ERROR_WRONG_STATE              @ref RC_ERROR_WRONG_STATE
+ *
+ */
+static t_eReturnCode s_FMKCDA_ConfigureRegisteredChannels(t_eFMKCDA_Adc f_Adc_e, t_bool f_stopOnError);
+/**
+ *
+ *	@brief      Reconfigure ADC channels during operational mode.\n
+ *  @note       Stops ADC if running, reconfigures all registered channels,
+ *              and restarts the ADC conversion. Used when new channels are
+ *              requested during OPE state.\n
+ *
+ *	@param[in]  f_Adc_e               : enum adc, value from @ref t_eFMKCDA_Adc
+ *
+ * @retval RC_OK                             @ref RC_OK
+ * @retval RC_ERROR_PARAM_INVALID            @ref RC_ERROR_PARAM_INVALID
+ * @retval RC_ERROR_WRONG_STATE              @ref RC_ERROR_WRONG_STATE
+ *
+ */
+static t_eReturnCode s_FMKCDA_ReconfigureChannels(t_eFMKCDA_Adc f_Adc_e);
+/**
+ *
  *	@brief      Function to get the bsp channel based on the value of f_channel_e.\n
 *
 *	@param[in]  f_channel_e           : enum adc channel, value from @ref t_eFMKCDA_AdcChannel
@@ -249,10 +281,12 @@ t_eReturnCode FMKCDA_Init(void)
 
         adcInfo_ps->IsConfigured_b       = (t_bool)False;
         adcInfo_ps->IsAdcRunning_b       = (t_bool)False;
+        adcInfo_ps->dmaConfigured_b       = (t_bool)False;
         adcInfo_ps->isConversionDone_b   = (t_bool)False;
         adcInfo_ps->flagErrDetected_b    = (t_bool)False;
         adcInfo_ps->mskChnlToCfg_u32     = (t_uint32)0;
-        adcInfo_ps->nbChnlToCfg_u8       = (t_uint8)0; // 
+        adcInfo_ps->nbChnlToCfg_u8       = (t_uint8)0;
+        adcInfo_ps->needsRecfg_b         = (t_bool)False; // 
         adcInfo_ps->c_clock_e = c_FmkCda_AdcCfg_as[idxAdc_u8].c_clock_e;
         adcInfo_ps->c_IRQNType_e = c_FmkCda_AdcCfg_as[idxAdc_u8].c_IRQNType_e;
         adcInfo_ps->c_DmaAdc_e = c_FmkCda_AdcCfg_as[idxAdc_u8].c_DmaAdc_e;
@@ -382,6 +416,12 @@ t_eReturnCode FMKCDA_Set_AdcChannelCfg( t_eFMKCDA_Adc f_Adc_e,
         //----- Configure Channel -----//
         g_AdcInfo_as[f_Adc_e].nbChnlToCfg_u8++;
         SETBIT_32B(g_AdcInfo_as[f_Adc_e].mskChnlToCfg_u32, (t_uint32)f_channel_e);
+        
+        //---- If in OPE mode, mark that reconfiguration is needed ----//
+        if(g_FmkCda_ModState_e == STATE_CYCLIC_OPE)
+        {
+            g_AdcInfo_as[f_Adc_e].needsRecfg_b = (t_bool)True;
+        }
     }
     
     return Ret_e;
@@ -623,19 +663,142 @@ static t_eReturnCode s_FMKCDA_PreOPerational(void)
             //---- Configure wanted by user channel ----// 
             if(Ret_e == RC_OK)
             {   
-                for(idxChannel_u8 = (t_uint8)0 ; idxChannel_u8 < FMKCDA_ADC_CHANNEL_NB ; idxChannel_u8++)
-                {
-                    if(GETBIT(adcInfo_ps->mskChnlToCfg_u32, idxChannel_u8) == BIT_IS_SET_32B)
-                    {
-                        Ret_e = s_FMKCDA_Set_BspChannelCfg((t_eFMKCDA_Adc)idxAdc_u8, (t_eFMKCDA_AdcChannel)idxChannel_u8);
-                    }
-                }
+                Ret_e = s_FMKCDA_ConfigureRegisteredChannels((t_eFMKCDA_Adc)idxAdc_u8, (t_bool)False);
             }
         }
     }
     
     return Ret_e;
 }
+
+/*********************************
+ * s_FMKCDA_ReconfigureChannels
+ *********************************/
+/**
+ * @brief Reconfigures ADC channels during operational mode.
+ * @note Stops the ADC if running, reconfigures all registered channels,
+ *       then restarts the ADC. This allows dynamic channel configuration
+ *       as pins become available during runtime.
+ * @param f_Adc_e ADC instance to reconfigure
+ * @return RC_OK on success, error code otherwise
+ */
+static t_eReturnCode s_FMKCDA_ReconfigureChannels(t_eFMKCDA_Adc f_Adc_e)
+{
+    t_eReturnCode Ret_e = RC_OK;
+    HAL_StatusTypeDef bspRet_e = HAL_OK;
+    t_uint8 idxChannel_u8 = 0;
+    t_sFMKCDA_AdcInfo * adcInfo_ps;
+
+    if(f_Adc_e >= FMKCDA_ADC_NB)
+    {
+        Ret_e = RC_ERROR_PARAM_INVALID;
+    }
+    else
+    {
+        adcInfo_ps = (t_sFMKCDA_AdcInfo *)(&g_AdcInfo_as[f_Adc_e]);
+
+        //---- Stop ADC if running ----//
+        if(adcInfo_ps->IsAdcRunning_b == (t_bool)True)
+        {
+            bspRet_e = HAL_ADC_Stop_DMA(&adcInfo_ps->bspIsct_s);
+            if(bspRet_e != HAL_OK)
+            {
+                ASSERT((t_uint16)bspRet_e);
+                Ret_e = RC_ERROR_WRONG_STATE;
+            }
+            else
+            {
+                adcInfo_ps->IsAdcRunning_b = (t_bool)False;
+                bspRet_e = HAL_ADC_DeInit(&adcInfo_ps->bspIsct_s);
+                if(bspRet_e != HAL_OK)
+                {
+                    ASSERT((t_uint16)bspRet_e);
+                    Ret_e = RC_ERROR_WRONG_STATE;
+                }
+            }
+        }
+
+        //---- Reconfigure all registered channels ----//
+        if(Ret_e == RC_OK && adcInfo_ps->nbChnlToCfg_u8 > 0)
+        {
+            //---- Reset counter and reconfigure ----//
+            g_counterRank_au8[f_Adc_e] = (t_uint8)0;
+
+            //---- Reset configured flags for all channels ----//
+            for(idxChannel_u8 = 0; idxChannel_u8 < FMKCDA_ADC_CHANNEL_NB; idxChannel_u8++)
+            {
+                adcInfo_ps->Channel_as[idxChannel_u8].isConfigured_b = (t_bool)False;
+            }
+
+            //---- Reconfigure the ADC instance ----//
+            Ret_e = s_FMKCDA_Set_BspAdcCfg(f_Adc_e, FMKCDA_ADC_CFG_SCAN_DMA);
+
+            //---- Configure all registered channels ----//
+            if(Ret_e == RC_OK)
+            {
+                Ret_e = s_FMKCDA_ConfigureRegisteredChannels(f_Adc_e, (t_bool)True);
+            }
+        }
+
+        //---- Restart ADC conversion ----//
+        if(Ret_e == RC_OK && adcInfo_ps->IsConfigured_b == (t_bool)True)
+        {
+            Ret_e = s_FMKCDA_StartAdcConversion(f_Adc_e, adcInfo_ps->HwCfg_e);
+            if((Ret_e == RC_OK) || (Ret_e == RC_WARNING_BUSY))
+            {
+                adcInfo_ps->IsAdcRunning_b = (t_bool)True;
+                adcInfo_ps->needsRecfg_b = (t_bool)False;
+                Ret_e = RC_OK;
+            }
+        }
+    }
+
+    return Ret_e;
+}
+
+/*********************************
+ * s_FMKCDA_ConfigureRegisteredChannels
+ *********************************/
+/**
+ * @brief Configures all registered ADC channels.
+ * @note Iterates through all channels and configures those marked in the
+ *       channel configuration mask. Can stop on first error or continue.
+ * @param f_Adc_e ADC instance to configure
+ * @param f_stopOnError True to stop on first error, False to continue
+ * @return RC_OK on success, error code on failure
+ */
+static t_eReturnCode s_FMKCDA_ConfigureRegisteredChannels(t_eFMKCDA_Adc f_Adc_e, t_bool f_stopOnError)
+{
+    t_eReturnCode Ret_e = RC_OK;
+    t_uint8 idxChannel_u8 = 0;
+    t_sFMKCDA_AdcInfo * adcInfo_ps;
+
+    if(f_Adc_e >= FMKCDA_ADC_NB)
+    {
+        Ret_e = RC_ERROR_PARAM_INVALID;
+    }
+    else
+    {
+        adcInfo_ps = (t_sFMKCDA_AdcInfo *)(&g_AdcInfo_as[f_Adc_e]);
+
+        //---- Configure all registered channels ----//
+        for(idxChannel_u8 = 0; idxChannel_u8 < FMKCDA_ADC_CHANNEL_NB; idxChannel_u8++)
+        {
+            if(GETBIT(adcInfo_ps->mskChnlToCfg_u32, (t_uint32)idxChannel_u8) == BIT_IS_SET_32B)
+            {
+                Ret_e = s_FMKCDA_Set_BspChannelCfg(f_Adc_e, (t_eFMKCDA_AdcChannel)idxChannel_u8);
+                if(Ret_e != RC_OK && f_stopOnError == (t_bool)True)
+                {
+                    ASSERT((t_uint16)idxChannel_u8);
+                    break;
+                }
+            }
+        }
+    }
+
+    return Ret_e;
+}
+
 /*********************************
  * s_FMKCDA_Operational
  *********************************/
@@ -657,6 +820,16 @@ static t_eReturnCode s_FMKCDA_Operational(void)
 
         if(adcInfo_ps->IsConfigured_b == (t_bool)true)
         {
+            //------ Check if reconfiguration of channels is needed ------//
+            if(adcInfo_ps->needsRecfg_b == (t_bool)True)
+            {
+                Ret_e = s_FMKCDA_ReconfigureChannels((t_eFMKCDA_Adc)idxAdc_u8);
+                if(Ret_e < RC_OK)
+                {
+                    ASSERT((t_uint16)Ret_e);
+                }
+            }
+
             //------ If an Adc Error has been raised, deal with it ------//
             if((adcInfo_ps->flagErrDetected_b == True)
             ||((currentTime_u32 - s_SavedTime_u32) > (t_uint32)FMKCDA_TIME_BTWN_DIAG_MS))
@@ -922,11 +1095,16 @@ static t_eReturnCode s_FMKCDA_Set_BspAdcCfg(t_eFMKCDA_Adc f_Adc_e,
         }
 
         //----- Rqst Dma Init -----//
-        if(Ret_e == RC_OK)
+        if((Ret_e == RC_OK)
+        && (adcInfo_ps->dmaConfigured_b == FALSE))
         {// set NVIC state and Dma Request if DMA is in hardware config
             Ret_e = FMKCPU_RqstDmaInit( adcInfo_ps->c_DmaAdc_e,
                                         FMKCPU_DMA_TYPE_ADC,
                                         (void *)(&adcInfo_ps->bspIsct_s));
+            if(Ret_e == RC_OK)
+            {
+                adcInfo_ps->dmaConfigured_b = TRUE;
+            }
         }
         //----- Init hardware ADC -----//
         if (Ret_e == RC_OK)
