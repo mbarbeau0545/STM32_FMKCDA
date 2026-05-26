@@ -22,11 +22,6 @@
     // ********************************************************************
     // *                      Defines
     // ********************************************************************
-    ///@brief Voltage multiplier to get the actual voltage since it's devided 
-    #define FMKCDA_ADC_VBAT_MULTPIPLIER         ((t_uint8)3)
-
-    ///@brief calibration constant 
-    #define FMKCDA_ADC_CALIB_VREF           ((t_float32)3.0f)
     #define FMKCDA_ADC_RESOLUTION           ((t_uint16)4095) // since we use 12 bits adc
     #define FMKCDA_ADC_VOLT_PROMILLE        ((t_uint16)1000)
     // ********************************************************************

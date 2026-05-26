@@ -1013,80 +1013,15 @@ static t_eReturnCode s_FMKCDA_Set_BspAdcCfg(t_eFMKCDA_Adc f_Adc_e,
         bspAdcInit_s = (ADC_InitTypeDef *)(&g_AdcInfo_as[f_Adc_e].bspIsct_s.Init);
         adcInfo_ps =  (t_sFMKCDA_AdcInfo *)(&g_AdcInfo_as[f_Adc_e]);
 
-        //----- Generic Configuration -----//
-        bspAdcInit_s->ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
-        bspAdcInit_s->Overrun = ADC_OVR_DATA_OVERWRITTEN;
-        bspAdcInit_s->Resolution = ADC_RESOLUTION_12B;
-        bspAdcInit_s->DataAlign = ADC_DATAALIGN_RIGHT;
-        bspAdcInit_s->EOCSelection = ADC_EOC_SEQ_CONV;
-
-        //----- Specific Configuration -----//
-#ifdef FMKCPU_STM32_ECU_FAMILY_F
-        bspAdcInit_s->ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
-        bspAdcInit_s->SamplingTimeCommon = ADC_SAMPLETIME_55CYCLES_5; // Valeur par défaut
-#elif defined FMKCPU_STM32_ECU_FAMILY_G4
-        bspAdcInit_s->ScanConvMode = ADC_SCAN_ENABLE;
-        bspAdcInit_s->LowPowerAutoWait = DISABLE; // Désactiver l'attente automatique par défaut
-        bspAdcInit_s->SamplingMode = ADC_SAMPLING_MODE_NORMAL; // Mode d'échantillonnage normal
-        bspAdcInit_s->GainCompensation = 0; // Pas de compensation de gain par défaut
-
-        //----- Over samppling parameter -----//
-        bspAdcInit_s->OversamplingMode = ENABLE;
-        bspAdcInit_s->Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_128; // Exemple : suréchantillonnage x16
-        bspAdcInit_s->Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_7;
-        bspAdcInit_s->Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
-        bspAdcInit_s->Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;
-        bspAdcInit_s->NbrOfConversion = (t_uint32)adcInfo_ps->nbChnlToCfg_u8; 
-#else
-            #error("Famille STM32 non supportée. Vérifiez la configuration.")
-#endif
-
-        // Gestion du mode DMA
-        if (FMKCPU_ADC_DMA_MODE == DMA_CIRCULAR) 
-        {
-            bspAdcInit_s->DMAContinuousRequests = ENABLE;
-        } 
-        else 
-        {
-            bspAdcInit_s->DMAContinuousRequests = DISABLE;
-        }
-
-        // Gestion des modes ADC
-        switch (f_HwAdcCfg_e) 
-        {
-            case FMKCDA_ADC_CFG_PERIODIC_DMA:
-                bspAdcInit_s->ContinuousConvMode = ENABLE;
-                bspAdcInit_s->ExternalTrigConv = ADC_SOFTWARE_START;
-                bspAdcInit_s->ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-                break;
-
-            case FMKCDA_ADC_CFG_SCAN_DMA:
-                bspAdcInit_s->ContinuousConvMode = ENABLE;
-                bspAdcInit_s->ExternalTrigConv = ADC_SOFTWARE_START;
-                bspAdcInit_s->ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-                break;
-
-            case FMKCDA_ADC_CFG_TRIGGERED_DMA:
-                bspAdcInit_s->DiscontinuousConvMode = DISABLE;
-
-#ifdef FMKCPU_STM32_ECU_FAMILY_F
-                    bspAdcInit_s->ExternalTrigConv = ADC_EXTERNALTRIGCONV_T1_CC4; // Exemple de déclencheur
-#elif defined FMKCPU_STM32_ECU_FAMILY_G4
-                    //bspAdcInit_s->ExternalTrigConv = ADC_EXTERNALTRIG1_T21_CC2; // Exemple de déclencheur
-#else
-                    #error("Famille STM32 non supportée. Vérifiez la configuration.")
-#endif
-                
-                bspAdcInit_s->ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISING;
-                break;
-
-            default:
-                Ret_e = RC_WARNING_NO_OPERATION;
-                break;
-        }
+        Ret_e = FMKCDA_Set_BspAdcInitCfg(  bspAdcInit_s,
+                                            f_HwAdcCfg_e,
+                                            adcInfo_ps->nbChnlToCfg_u8);
 
         //----- Set hardware clock register to enable -----//
-        Ret_e = FMKCPU_Set_HwClock(adcInfo_ps->c_clock_e, FMKCPU_CLOCKPORT_OPE_ENABLE);
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = FMKCPU_Set_HwClock(adcInfo_ps->c_clock_e, FMKCPU_CLOCKPORT_OPE_ENABLE);
+        }
 
         //----- Set NVIC State -----//
         if(Ret_e == RC_OK)
@@ -1163,25 +1098,13 @@ static t_eReturnCode s_FMKCDA_Set_BspChannelCfg(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA
     }
     else
     {
-#ifdef FMKCPU_STM32_ECU_FAMILY_F
-        BspChannelInit_s.SamplingTime = ADC_SAMPLETIME_13CYCLES_5; // Configuration spécifique à la famille F
-        BspChannelInit_s.SingleDiff = ADC_SINGLE_ENDE;           // Single-ended par défaut
-        BspChannelInit_s.OffsetNumber = ADC_OFFSET_NONE;         // Pas d'offset initial
-        BspChannelInit_s.Offset = 0;                             // Offset à 0
-        BspChannelInit_s.OffsetSign = ADC_OFFSET_SIGN_POSITIVE;  // Offset positif par défaut
-        BspChannelInit_s.OffsetSaturation = DISABLE;              // Saturation désactivée
-#elif defined FMKCPU_STM32_ECU_FAMILY_G4
-        BspChannelInit_s.SamplingTime = ADC_SAMPLETIME_247CYCLES_5; // Configuration spécifique à la famille G
-        BspChannelInit_s.SingleDiff = ADC_SINGLE_ENDED;           // Single-ended par défaut
-        BspChannelInit_s.OffsetNumber = ADC_OFFSET_NONE;        // Pas d'offset initial
-        BspChannelInit_s.Offset = 0;                            // Offset à 0
-        BspChannelInit_s.OffsetSign = ADC_OFFSET_SIGN_POSITIVE;  // Offset positif par défaut
-        BspChannelInit_s.OffsetSaturation = DISABLE;           // Saturation désactivée
-#else
-        #error("Famille STM32 non supportée. Vérifiez la configuration.")
-#endif
+        Ret_e = FMKCDA_Set_BspChannelCfg(&BspChannelInit_s);
+
         //----- configure channel -----//
-        Ret_e = s_FMKCDA_GetBspAdcChannel(f_Adc_e ,f_channel_e, &bspChannel_u32);
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = s_FMKCDA_GetBspAdcChannel(f_Adc_e ,f_channel_e, &bspChannel_u32);
+        }
 
         if (Ret_e == RC_OK)
         {
@@ -1290,7 +1213,7 @@ static t_eReturnCode s_FMKCDA_SetAdcCalibration(t_eFMKCDA_Adc f_Adc_e, t_float32
     t_sFMKCDA_AdcBuffer * vrefAdcBuffer_ps;
     t_uint8 LLI_u8;
     t_uint8 idxBuffChnl_u8;
-    t_uint16 staticCalibValue_u16;
+    t_uint16 staticCalibValue_u16 = 0;
 
     if(f_Adc_e >= FMKCDA_ADC_NB)
     {
@@ -1322,9 +1245,10 @@ static t_eReturnCode s_FMKCDA_SetAdcCalibration(t_eFMKCDA_Adc f_Adc_e, t_float32
         if(LLI_u8 != vrefAdcCtrRank_u8)
         {//                         max rank in buffer, cause it's in reverse
             idxBuffChnl_u8 = (t_uint8)(LLI_u8);
-            staticCalibValue_u16 = (t_uint16)*c_FmkCda_VrefCalibAddress_pas16[f_Adc_e];
-
+            staticCalibValue_u16 = FMKCDA_Get_VrefCalibRawValue(
+                                        (t_uint16)*c_FmkCda_VrefCalibAddress_pas16[f_Adc_e]);
             if((staticCalibValue_u16 > (t_uint16)0)
+            && (staticCalibValue_u16 <= (t_uint16)FMKCDA_ADC_RESOLUTION)
             && (vrefAdcBuffer_ps->savedVal_ua16[idxBuffChnl_u8] > (t_uint16)0))
             {
                 //                                  the adc verefint value calculate by the adc 
@@ -1335,9 +1259,16 @@ static t_eReturnCode s_FMKCDA_SetAdcCalibration(t_eFMKCDA_Adc f_Adc_e, t_float32
             }
             else 
             {
-                *f_calibValue_pf32 = (t_float32)1.0f;
+                Ret_e = RC_ERROR_WRONG_RESULT;
+                *f_calibValue_pf32 = FMKCDA_ADC_CALIB_VREF;
                 ASSERT((t_uint16)0);
             }
+        }
+        else
+        {
+            Ret_e = RC_ERROR_MISSING_CONFIG;
+            *f_calibValue_pf32 = FMKCDA_ADC_CALIB_VREF;
+            ASSERT((t_uint16)0);
         }
     }
 
