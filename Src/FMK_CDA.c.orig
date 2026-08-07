@@ -407,7 +407,7 @@ t_eReturnCode FMKCDA_Set_AdcChannelCfg( t_eFMKCDA_Adc f_Adc_e,
     || f_channel_e >= c_FmkCda_AdcMaxChnl_ua8[f_Adc_e])
     {
         Ret_e = RC_ERROR_PARAM_INVALID;
-        ASSERT((t_uint16)f_Adc_e);
+        ASSERT((t_sint32)f_Adc_e);
     }
     else
     {
@@ -440,12 +440,12 @@ t_eReturnCode FMKCDA_Get_AnaChannelMeasure(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA_AdcC
     || f_channel_e >= c_FmkCda_AdcMaxChnl_ua8[f_Adc_e])
     {
         Ret_e = RC_ERROR_PARAM_INVALID;
-        ASSERT((t_uint16)Ret_e);
+        ASSERT((t_sint32)Ret_e);
     }
     if (f_AnaMeasure_pf32 == (t_float32 *)NULL)
     {
         Ret_e = RC_ERROR_PTR_NULL;
-        ASSERT((t_uint16)Ret_e);
+        ASSERT((t_sint32)Ret_e);
     }
     if(g_FmkCda_ModState_e != STATE_CYCLIC_OPE)
     {
@@ -460,7 +460,7 @@ t_eReturnCode FMKCDA_Get_AnaChannelMeasure(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA_AdcC
         || chnlInfo_ps->isConfigured_b == (t_bool)False)
         {
             Ret_e = RC_ERROR_MISSING_CONFIG;
-            ASSERT((t_uint16)Ret_e);
+            ASSERT((t_sint32)Ret_e);
         }
         if((adcInfo_ps->adcError_e != FMKCDA_ERRSTATE_OK)
         || (adcInfo_ps->isConversionDone_b == (t_bool)FALSE))
@@ -495,12 +495,12 @@ t_eReturnCode FMKCDA_Get_AnaInternSnsMeasure(   t_eFMKCDA_AdcInternSns f_AdcInte
 
     if(f_AdcInternSns_e >= FMKCDA_ADC_INTERN_NB)
     {
-        ASSERT((t_uint16)0);
+        ASSERT((t_sint32)0);
         Ret_e = RC_ERROR_PARAM_INVALID;
     }
     else if (f_AnaMeasure_pf32 == (t_float32 * )NULL)
     {
-        ASSERT((t_uint16)0);
+        ASSERT((t_sint32)0);
         Ret_e = RC_ERROR_PTR_NULL;
 
     }
@@ -520,7 +520,7 @@ t_eReturnCode FMKCDA_Get_AnaInternSnsMeasure(   t_eFMKCDA_AdcInternSns f_AdcInte
         || chnlInfo_ps->isConfigured_b == (t_bool)False)
         {
             Ret_e = RC_ERROR_MISSING_CONFIG;
-            ASSERT((t_uint16)Ret_e);
+            ASSERT((t_sint32)Ret_e);
         }
         if((adcInfo_ps->adcError_e != FMKCDA_ERRSTATE_OK)
         || (adcInfo_ps->isConversionDone_b == (t_bool)FALSE))
@@ -562,12 +562,12 @@ t_eReturnCode FMKCDA_Get_AdcError(t_eFMKCDA_Adc f_adc_e, t_uint16 * f_chnlErrInf
     if(f_adc_e >= FMKCDA_ADC_NB)
     {
         Ret_e = RC_ERROR_PARAM_INVALID;
-        ASSERT((t_uint16)f_adc_e);
+        ASSERT((t_sint32)f_adc_e);
     }
     if(f_chnlErrInfo_pu16 == (t_uint16 *)NULL)
     {
         Ret_e = RC_ERROR_PTR_NULL;
-        ASSERT((t_uint16)(*f_chnlErrInfo_pu16));
+        ASSERT((t_sint32)(*f_chnlErrInfo_pu16));
     }
     if(Ret_e == RC_OK)
     {
@@ -584,7 +584,7 @@ ADC_HandleTypeDef * FMKCDA_PRIVATE_GetHandleTypeDef(t_eFMKCDA_Adc f_adc_e)
 {
     if(g_AdcInfo_as[f_adc_e].IsConfigured_b == (t_bool)False)
     {
-        ASSERT((t_uint16)0);
+        ASSERT((t_sint32)0);
     }
     return (ADC_HandleTypeDef *)(&g_AdcInfo_as[f_adc_e].bspIsct_s);
 }
@@ -624,7 +624,7 @@ static t_eReturnCode s_FMKCDA_PreOPerational(void)
                 idxChannel_u8 = c_FmkCda_HwInternalSnsCfg_as[idxInternSns_u8].adcCfg_s.chnl_e;
                 if(GETBIT(adcInfo_ps->mskChnlToCfg_u32, idxChannel_u8) == (BIT_IS_SET_32B))
                 {
-                    ASSERT((t_uint16)idxChannel_u8);
+                    ASSERT((t_sint32)idxChannel_u8);
                     Ret_e = RC_ERROR_WRONG_CONFIG;
                     break;
                 }
@@ -646,7 +646,7 @@ static t_eReturnCode s_FMKCDA_PreOPerational(void)
 
                 if(GETBIT(adcInfo_ps->mskChnlToCfg_u32, (t_uint32)idxChannel_u8) == BIT_IS_SET_32B)
                 {
-                    ASSERT((t_uint16)idxChannel_u8);
+                    ASSERT((t_sint32)idxChannel_u8);
                     Ret_e = RC_ERROR_WRONG_CONFIG;
                     break;
                 }
@@ -703,7 +703,7 @@ static t_eReturnCode s_FMKCDA_ReconfigureChannels(t_eFMKCDA_Adc f_Adc_e)
             bspRet_e = HAL_ADC_Stop_DMA(&adcInfo_ps->bspIsct_s);
             if(bspRet_e != HAL_OK)
             {
-                ASSERT((t_uint16)bspRet_e);
+                ASSERT((t_sint32)bspRet_e);
                 Ret_e = RC_ERROR_WRONG_STATE;
             }
             else
@@ -712,7 +712,7 @@ static t_eReturnCode s_FMKCDA_ReconfigureChannels(t_eFMKCDA_Adc f_Adc_e)
                 bspRet_e = HAL_ADC_DeInit(&adcInfo_ps->bspIsct_s);
                 if(bspRet_e != HAL_OK)
                 {
-                    ASSERT((t_uint16)bspRet_e);
+                    ASSERT((t_sint32)bspRet_e);
                     Ret_e = RC_ERROR_WRONG_STATE;
                 }
             }
@@ -789,7 +789,7 @@ static t_eReturnCode s_FMKCDA_ConfigureRegisteredChannels(t_eFMKCDA_Adc f_Adc_e,
                 Ret_e = s_FMKCDA_Set_BspChannelCfg(f_Adc_e, (t_eFMKCDA_AdcChannel)idxChannel_u8);
                 if(Ret_e != RC_OK && f_stopOnError == (t_bool)True)
                 {
-                    ASSERT((t_uint16)idxChannel_u8);
+                    ASSERT((t_sint32)idxChannel_u8);
                     break;
                 }
             }
@@ -826,7 +826,7 @@ static t_eReturnCode s_FMKCDA_Operational(void)
                 Ret_e = s_FMKCDA_ReconfigureChannels((t_eFMKCDA_Adc)idxAdc_u8);
                 if(Ret_e < RC_OK)
                 {
-                    ASSERT((t_uint16)Ret_e);
+                    ASSERT((t_sint32)Ret_e);
                 }
             }
 
@@ -862,7 +862,7 @@ static t_eReturnCode s_FMKCDA_Operational(void)
                 {
                     // update information 
                     adcInfo_ps->IsAdcRunning_b = False;
-                    ASSERT((t_uint16)adcInfo_ps->adcError_e);
+                    ASSERT((t_sint32)adcInfo_ps->adcError_e);
                     adcInfo_ps->adcError_e =  FMKCDA_ERRSTATE_PRESENTS;
                 }
                 else 
@@ -919,7 +919,7 @@ static t_eReturnCode s_FMKCDA_StartAdcConversion(t_eFMKCDA_Adc f_Adc_e, t_eFMKCD
         }
         else if(bspRet_e != HAL_OK)
         {
-            ASSERT((t_uint16)bspRet_e);
+            ASSERT((t_sint32)bspRet_e);
             Ret_e = RC_ERROR_WRONG_STATE;
         }
     }
@@ -963,7 +963,7 @@ static t_eReturnCode s_FMKCDA_PerformDiagnostic(t_eFMKCDA_Adc f_adc_e)
     }
     else 
     {
-        ASSERT((t_uint16)adcErr_u32);
+        ASSERT((t_sint32)adcErr_u32);
     }
     
     //---- see if errros is still active ----//
@@ -1005,7 +1005,7 @@ static t_eReturnCode s_FMKCDA_Set_BspAdcCfg(t_eFMKCDA_Adc f_Adc_e,
 
     if (f_Adc_e >= FMKCDA_ADC_NB || f_HwAdcCfg_e >= FMKCDA_ADC_CFG_NB)
     {
-        ASSERT((t_uint16)f_HwAdcCfg_e);
+        ASSERT((t_sint32)f_HwAdcCfg_e);
         Ret_e = RC_ERROR_PARAM_INVALID;
     }
     if (Ret_e == RC_OK)
@@ -1054,12 +1054,12 @@ static t_eReturnCode s_FMKCDA_Set_BspAdcCfg(t_eFMKCDA_Adc f_Adc_e,
             else
             {
                 Ret_e = RC_ERROR_WRONG_STATE;
-                ASSERT((t_uint16)BspRet_e);
+                ASSERT((t_sint32)BspRet_e);
             }
         }
         else
         {
-            ASSERT((t_uint16)Ret_e);
+            ASSERT((t_sint32)Ret_e);
             Ret_e = RC_ERROR_WRONG_STATE;
         }
     }
@@ -1078,22 +1078,22 @@ static t_eReturnCode s_FMKCDA_Set_BspChannelCfg(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA
     
     if(f_channel_e >= FMKCDA_ADC_CHANNEL_NB)
     {
-        ASSERT((t_uint16)f_channel_e);
+        ASSERT((t_sint32)f_channel_e);
         Ret_e = RC_ERROR_PARAM_INVALID;
     }
     else if(g_AdcInfo_as[f_Adc_e].IsConfigured_b == (t_bool)False)
     {
-        ASSERT((t_uint16)g_AdcInfo_as[f_Adc_e].IsConfigured_b);
+        ASSERT((t_sint32)g_AdcInfo_as[f_Adc_e].IsConfigured_b);
         Ret_e = RC_ERROR_MISSING_CONFIG;
     }
     else if(g_AdcInfo_as[f_Adc_e].Channel_as[f_channel_e].isConfigured_b == (t_bool)True)
     {
-        ASSERT((t_uint16)0);
+        ASSERT((t_sint32)0);
         Ret_e = RC_ERROR_ALREADY_CONFIGURED;
     }
     else if(g_counterRank_au8[f_Adc_e] > (t_uint8)FMKCDA_ADC_MAX_CONVERSION)
     {
-        ASSERT((t_uint16)0);
+        ASSERT((t_sint32)0);
         Ret_e = RC_ERROR_LIMIT_REACHED;
     }
     else
@@ -1126,7 +1126,7 @@ static t_eReturnCode s_FMKCDA_Set_BspChannelCfg(t_eFMKCDA_Adc f_Adc_e, t_eFMKCDA
             else
             {
                 Ret_e = RC_ERROR_WRONG_STATE;
-                ASSERT((t_uint16)BspRet_e);
+                ASSERT((t_sint32)BspRet_e);
             }
         }
     }
@@ -1218,12 +1218,12 @@ static t_eReturnCode s_FMKCDA_SetAdcCalibration(t_eFMKCDA_Adc f_Adc_e, t_float32
     if(f_Adc_e >= FMKCDA_ADC_NB)
     {
         Ret_e = RC_ERROR_PARAM_INVALID;
-        ASSERT((t_uint16)0);
+        ASSERT((t_sint32)0);
     }
     else if(f_calibValue_pf32 == (t_float32 *)NULL)
     {
         Ret_e = RC_ERROR_PTR_NULL;
-        ASSERT((t_uint16)0);
+        ASSERT((t_sint32)0);
     }
     else 
     {
@@ -1261,14 +1261,14 @@ static t_eReturnCode s_FMKCDA_SetAdcCalibration(t_eFMKCDA_Adc f_Adc_e, t_float32
             {
                 Ret_e = RC_ERROR_WRONG_RESULT;
                 *f_calibValue_pf32 = FMKCDA_ADC_CALIB_VREF;
-                ASSERT((t_uint16)0);
+                ASSERT((t_sint32)0);
             }
         }
         else
         {
             Ret_e = RC_ERROR_MISSING_CONFIG;
             *f_calibValue_pf32 = FMKCDA_ADC_CALIB_VREF;
-            ASSERT((t_uint16)0);
+            ASSERT((t_sint32)0);
         }
     }
 
@@ -1289,12 +1289,12 @@ static t_eReturnCode s_FMKCDA_GetBspAdcChannel(t_eFMKCDA_Adc f_Adc_e,
     if (f_channel_e >= FMKCDA_ADC_CHANNEL_NB)
     {
         Ret_e = RC_ERROR_PARAM_INVALID;
-        ASSERT((t_uint16)0);
+        ASSERT((t_sint32)0);
     }
     if (f_bspChannel_32 == (t_uint32 *)NULL)
     {
         Ret_e = RC_ERROR_PTR_NULL;
-        ASSERT((t_uint16)0);
+        ASSERT((t_sint32)0);
     }
     else 
     {
